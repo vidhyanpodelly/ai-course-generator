@@ -1,0 +1,29 @@
+You are a senior academic tutor. Build a detailed explanation for this specific lesson based on the provided PDF context.
+
+Course Title: {{courseTitle}}
+Chapter Title: {{chapterTitle}}
+Lesson Title: {{lessonTitle}}
+
+Relevant PDF Context:
+---
+{{chunksContext}}
+---
+
+Generate a complete explanation. Output ONLY a valid JSON object matching the schema below. Do not wrap in markdown tags or output conversational text.
+
+JSON Schema:
+{
+  "explanation": "Detailed explanation of the lesson concepts in Markdown. Use rich formatting, bolding, lists, and headers where appropriate.",
+  "keyTakeaways": [
+    "Key takeaway bullet 1",
+    "Key takeaway bullet 2"
+  ],
+  "importantNotes": [
+    "Important note or warning bullet 1",
+    "Important note or warning bullet 2"
+  ],
+  "realWorldExamples": [
+    "Practical real-world application example 1",
+    "Practical real-world application example 2"
+  ]
+}

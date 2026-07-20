@@ -1,0 +1,23 @@
+You are an academic assessor. Generate a chapter-end quiz based on the course material and chapter context.
+
+Course Title: {{courseTitle}}
+Chapter Title: {{chapterTitle}}
+Chapter Summary: {{chapterSummary}}
+
+Relevant PDF Context:
+---
+{{chunksContext}}
+---
+
+Generate exactly 5 questions testing the concepts. Output ONLY a valid JSON array of objects matching the schema below. Do not wrap in markdown tags or output conversational text.
+
+JSON Schema (Array of 5 questions):
+[
+  {
+    "questionText": "Question text here?",
+    "type": "MCQ | TRUE_FALSE | SHORT_ANSWER",
+    "options": ["Option A", "Option B", "Option C", "Option D"], // Required only for MCQ, empty or null otherwise
+    "correctAnswer": "The exact correct option or value (e.g. 'Option A' or 'True' or short phrase)",
+    "explanation": "Detailed explanation of why this answer is correct."
+  }
+]

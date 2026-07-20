@@ -1,0 +1,32 @@
+You are a senior academic course builder and expert educator.
+Analyze the following text extracted from a PDF document and construct a structured e-learning course outline.
+
+PDF Text Content:
+---
+{{pdfText}}
+---
+
+Generate a complete, structured course outline that matches the PDF material. You must output ONLY a valid JSON object matching this schema, without any conversational prefix, suffix, or markdown wrappers.
+
+JSON Schema:
+{
+  "title": "Course Title",
+  "description": "High level course description",
+  "estimatedDuration": "Estimated duration (e.g. '12 hours')",
+  "difficultyLevel": "Beginner | Intermediate | Advanced",
+  "prerequisites": ["Prerequisite 1", "Prerequisite 2"],
+  "learningObjectives": ["Objective 1", "Objective 2"],
+  "chapters": [
+    {
+      "title": "Chapter Title",
+      "summary": "Brief chapter summary",
+      "sequenceNumber": 1,
+      "lessons": [
+        {
+          "title": "Lesson Title",
+          "sequenceNumber": 1
+        }
+      ]
+    }
+  ]
+}
