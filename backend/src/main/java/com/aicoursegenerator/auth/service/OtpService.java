@@ -38,7 +38,7 @@ public class OtpService {
         // because expiresAt is set to now + 5 minutes.
         // If expiresAt > now + 4 minutes, it was sent less than 60 seconds ago.
         Optional<OtpVerification> activeOtp = otpRepository.findByEmail(email);
-        if (activeOtp.isPresent() && activeOtp.get().getExpiresAt().isAfter(now.plusMinutes(4))) {
+        if (activeOtp.isPresent() && activeOtp.get().getExpiresAt().isAfter(now.plusMinutes(14))) {
             throw new BadRequestException("Please wait at least 60 seconds before requesting another OTP.");
         }
 
@@ -54,7 +54,7 @@ public class OtpService {
                 email,
                 otpCode,
                 otpType,
-                now.plusMinutes(5)
+                now.plusMinutes(15)
         );
 
         otpRepository.save(otpVerification);

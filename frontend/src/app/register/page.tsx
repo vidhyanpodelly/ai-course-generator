@@ -240,8 +240,17 @@ export default function RegisterPage() {
 
               <button
                 type="button"
+                onClick={handleInitiateSignUp}
+                disabled={loading}
+                className="w-full text-center text-sm text-violet-400 hover:text-violet-300 font-semibold transition mt-4 mb-2 disabled:opacity-50"
+              >
+                {loading ? 'Resending...' : 'Resend OTP Verification Code'}
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setStep(1)}
-                className="w-full text-center text-xs text-gray-400 hover:text-white transition"
+                className="w-full text-center text-xs text-gray-400 hover:text-white transition mt-2"
               >
                 Back to registration details
               </button>
