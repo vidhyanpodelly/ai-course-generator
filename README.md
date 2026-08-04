@@ -100,7 +100,7 @@ Curricula.AI is a production-quality, Full Stack AI-powered educational applicat
 1. Copy [.env.example](file:///.env.example) to a new file named `.env` in the root workspace.
 2. Edit the `.env` parameters to specify your database host/credentials and Base64 JWT secret.
 3. Configure the `GEMINI_API_KEY` parameter (or leave it as `mock_gemini_key` to run in mock simulation mode).
-4. Configure `RESEND_API_KEY` and `RESEND_FROM_EMAIL` (e.g., `CurriculaAI <onboarding@resend.dev>`) for OTP email delivery.
+4. Configure `BREVO_API_KEY`, `BREVO_FROM_EMAIL`, and `BREVO_FROM_NAME` (e.g., `CurriculaAI`) for OTP email delivery.
 
 ### Running Backend
 ```bash
