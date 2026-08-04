@@ -62,6 +62,7 @@ function LessonViewerContent({ courseId, lessonId }: { courseId: string; lessonI
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [progress, setProgress] = useState<CourseProgress | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   
   const [loadingLesson, setLoadingLesson] = useState(true);
   const [loadingProgress, setLoadingProgress] = useState(false);
@@ -124,17 +125,30 @@ function LessonViewerContent({ courseId, lessonId }: { courseId: string; lessonI
       if (lessonRes.success) setLesson(lessonRes.data);
 
       // 2. Fetch course outline & progress
-      const [courseRes, chaptersRes, progressRes, chatRes] = await Promise.all([
+      const [courseRes, chaptersRes, progressRes] = await Promise.all([
         coursesService.getCourse(courseId),
         coursesService.getCourseChapters(courseId),
-        progressService.getCourseProgress(courseId),
-        chatService.getChatHistory(courseId)
+        progressService.getCourseProgress(courseId)
       ]);
 
       if (courseRes.success) setCourse(courseRes.data);
       if (chaptersRes.success) setChapters(chaptersRes.data);
       if (progressRes.success) setProgress(progressRes.data);
-      if (chatRes.success) setMessages(chatRes.data);
+
+      // 3. Gracefully fetch chat sessions
+      try {
+        const sessionsRes = await chatService.getSessions(courseId);
+        if (sessionsRes.success && sessionsRes.data.length > 0) {
+          const latestSessionId = sessionsRes.data[0].id;
+          setActiveSessionId(latestSessionId);
+          const historyRes = await chatService.getChatHistory(latestSessionId);
+          if (historyRes.success) {
+            setMessages(historyRes.data);
+          }
+        }
+      } catch (chatErr) {
+        console.error('Failed to load chat history:', chatErr);
+      }
 
     } catch (err: any) {
       if (err.response && err.response.data && err.response.data.message) {
@@ -188,6 +202,26 @@ function LessonViewerContent({ courseId, lessonId }: { courseId: string; lessonI
     setChatMessage('');
     setSendingChat(true);
 
+    let currentSessionId = activeSessionId;
+    if (!currentSessionId) {
+      try {
+        const createRes = await chatService.createSession(courseId, "Course Chat");
+        if (createRes.success) {
+          currentSessionId = createRes.data.id;
+          setActiveSessionId(currentSessionId);
+        }
+      } catch (err) {
+        console.error('Failed to create chat session:', err);
+        setSendingChat(false);
+        return;
+      }
+    }
+
+    if (!currentSessionId) {
+      setSendingChat(false);
+      return;
+    }
+
     // Save user message in list
     const tempUserMsg: ChatMessage = {
       id: Math.random().toString(),
@@ -212,7 +246,7 @@ function LessonViewerContent({ courseId, lessonId }: { courseId: string; lessonI
     try {
       const token = localStorage.getItem('auth_token') || '';
       
-      const response = await fetch(`/api/chat/${courseId}/stream`, {
+      const response = await fetch(`/api/chat/sessions/${currentSessionId}/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
