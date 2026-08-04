@@ -1,7 +1,10 @@
 package com.aicoursegenerator.auth.service;
 
 import com.aicoursegenerator.auth.dto.BrevoEmailRequest;
+import com.aicoursegenerator.auth.dto.RecipientDto;
+import com.aicoursegenerator.auth.dto.SenderDto;
 import com.aicoursegenerator.auth.exception.EmailDeliveryException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -74,10 +77,18 @@ public class BrevoEmailService implements EmailService {
             return;
         }
 
-        BrevoEmailRequest.Sender sender = new BrevoEmailRequest.Sender(fromName, fromEmail);
-        BrevoEmailRequest.Recipient recipient = new BrevoEmailRequest.Recipient(toEmail, "");
+        SenderDto sender = new SenderDto(fromName, fromEmail);
+        RecipientDto recipient = new RecipientDto(toEmail, "User");
         
         BrevoEmailRequest request = new BrevoEmailRequest(sender, List.of(recipient), subject, htmlBody);
+
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            String jsonRequest = mapper.writeValueAsString(request);
+            logger.info("Sending email to Brevo. Payload: {}", jsonRequest);
+        } catch (Exception e) {
+            logger.warn("Failed to serialize Brevo request for logging: {}", e.getMessage());
+        }
 
         try {
             ResponseEntity<String> response = restClient.post()
