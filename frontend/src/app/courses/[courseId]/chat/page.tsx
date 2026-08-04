@@ -344,7 +344,7 @@ function CourseChatContent({ courseId }: { courseId: string }) {
 
           <div className="pt-4 border-t border-gray-900/60 text-[10px] text-gray-600 flex items-center justify-center space-x-1">
             <Sparkles className="h-3 w-3 text-amber-500 animate-pulse" />
-            <span>Powered by Gemini</span>
+            <span>Powered by AI</span>
           </div>
         </div>
 

@@ -12,6 +12,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +32,7 @@ public class OpenRouterProvider implements AiProvider {
 
     public OpenRouterProvider(
             @Value("${ai.openrouter.key:}") String apiKey,
-            @Value("${ai.openrouter.model:google/gemini-flash-1.5}") String model,
+            @Value("${ai.openrouter.model:nvidia/nemotron-3-ultra-550b-a55b:free}") String model,
             @Value("${ai.openrouter.url:https://openrouter.ai/api/v1/chat/completions}") String baseUrl,
             ObjectMapper objectMapper) {
         this.apiKey = apiKey;
@@ -48,31 +49,69 @@ public class OpenRouterProvider implements AiProvider {
 
     @Override
     public String generateText(String systemPrompt, String userPrompt) {
-        return callOpenRouterApi(systemPrompt, userPrompt, false);
+        return executeWithRetry(systemPrompt, userPrompt, false);
     }
 
     @Override
     public <T> T generateStructuredJson(String systemPrompt, String userPrompt, Class<T> responseClass) {
+        String jsonResponse = executeWithRetry(systemPrompt, userPrompt, true);
+        jsonResponse = cleanJsonResponse(jsonResponse);
+        try {
+            return objectMapper.readValue(jsonResponse, responseClass);
+        } catch (Exception e) {
+            logger.error("Failed to parse JSON response into {}: {}", responseClass.getSimpleName(), e.getMessage());
+            throw new RuntimeException("JSON parsing failed", e);
+        }
+    }
+
+    private String executeWithRetry(String systemPrompt, String userPrompt, boolean requireJson) {
         int maxRetries = 3;
+        int delayMs = 2000;
+
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
                 String prompt = userPrompt;
-                if (attempt > 1) {
+                if (requireJson && attempt > 1) {
                     prompt += "\n\nIMPORTANT: You must return ONLY a valid JSON object matching the requested schema. Do not enclose it in markdown blocks. Output raw JSON only.";
                 }
-                String jsonResponse = callOpenRouterApi(systemPrompt, prompt, true);
-                jsonResponse = cleanJsonResponse(jsonResponse);
                 
-                T result = objectMapper.readValue(jsonResponse, responseClass);
-                return result;
+                return callOpenRouterApi(systemPrompt, prompt);
+                
             } catch (Exception e) {
-                logger.error("Attempt {} failed for OpenRouter JSON generation: {}", attempt, e.getMessage());
-                if (attempt == maxRetries) {
-                    throw new RuntimeException("OpenRouter JSON generation failed after " + maxRetries + " attempts", e);
+                boolean isRetryable = isRetryableError(e);
+                logger.error("Attempt {} failed for OpenRouter API: {}", attempt, e.getMessage());
+                
+                if (attempt == maxRetries || !isRetryable) {
+                    logger.error("Exhausted retries or non-retryable error. Propagating failure.");
+                    throw new RuntimeException(e.getMessage(), e);
+                }
+                
+                try {
+                    logger.info("Waiting {}ms before next attempt...", delayMs);
+                    Thread.sleep(delayMs);
+                    delayMs *= 2; // Exponential backoff: 2s, 4s, 8s
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("Thread interrupted during backoff", ie);
                 }
             }
         }
-        return null;
+        throw new RuntimeException("OpenRouter API failed after " + maxRetries + " attempts");
+    }
+
+    private boolean isRetryableError(Exception e) {
+        String msg = e.getMessage();
+        if (msg == null) return true;
+        // Check for common retryable conditions
+        return e instanceof HttpTimeoutException ||
+               msg.contains("timeout") ||
+               msg.contains("status 429") ||
+               msg.contains("status 500") ||
+               msg.contains("status 502") ||
+               msg.contains("status 503") ||
+               msg.contains("status 504") ||
+               msg.contains("status 404") ||
+               msg.contains("model unavailable");
     }
 
     private String cleanJsonResponse(String response) {
@@ -122,41 +161,62 @@ public class OpenRouterProvider implements AiProvider {
         return response.trim();
     }
 
-    private String callOpenRouterApi(String systemPrompt, String userPrompt, boolean requireJson) {
-        try {
-            Map<String, Object> requestBody = Map.of(
-                    "model", this.model,
-                    "messages", List.of(
-                            Map.of("role", "system", "content", systemPrompt),
-                            Map.of("role", "user", "content", userPrompt)
-                    )
-            );
-            
-            logger.info("Sending request to OpenRouter using model: {}", this.model);
-            
-            String jsonBody = objectMapper.writeValueAsString(requestBody);
-            
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + apiKey)
-                    .header("HTTP-Referer", "http://localhost:3000") // Required by OpenRouter
-                    .header("X-Title", "AI Course Generator") // Optional but good for OpenRouter
-                    .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-                    .build();
-            
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            
-            if (response.statusCode() != 200) {
-                throw new RuntimeException("OpenRouter returned status " + response.statusCode() + ": " + response.body());
-            }
-            
-            JsonNode rootNode = objectMapper.readTree(response.body());
-            return rootNode.path("choices").get(0).path("message").path("content").asText();
-            
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to call OpenRouter API: " + e.getMessage(), e);
+    private String callOpenRouterApi(String systemPrompt, String userPrompt) throws Exception {
+        Map<String, Object> requestBody = Map.of(
+                "model", this.model,
+                "messages", List.of(
+                        Map.of("role", "system", "content", systemPrompt),
+                        Map.of("role", "user", "content", userPrompt)
+                )
+        );
+        
+        String jsonBody = objectMapper.writeValueAsString(requestBody);
+        
+        logger.info("--- AI Request ---");
+        logger.info("Provider: OpenRouter");
+        logger.info("Model: {}", this.model);
+        logger.info("Endpoint: {}", this.baseUrl);
+        logger.info("Prompt length: {}", jsonBody.length());
+        
+        long startTime = System.currentTimeMillis();
+        
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + apiKey)
+                .header("HTTP-Referer", "http://localhost:3000") // Required by OpenRouter
+                .header("X-Title", "AI Course Generator") // Optional but good for OpenRouter
+                .timeout(Duration.ofSeconds(90)) // Added 90s timeout explicitly
+                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                .build();
+        
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        long duration = System.currentTimeMillis() - startTime;
+        
+        logger.info("--- AI Response ---");
+        logger.info("HTTP Status: {}", response.statusCode());
+        logger.info("Response Time: {} ms", duration);
+
+        if (response.statusCode() != 200) {
+            logger.error("OpenRouter Error Response Body: {}", response.body());
+            throw new RuntimeException("OpenRouter returned status " + response.statusCode() + ": " + response.body());
         }
+        
+        JsonNode rootNode = objectMapper.readTree(response.body());
+        
+        // Try to log token usage
+        if (rootNode.has("usage")) {
+            JsonNode usage = rootNode.get("usage");
+            logger.info("Token Usage - Prompt: {}, Completion: {}, Total: {}", 
+                usage.path("prompt_tokens").asInt(0),
+                usage.path("completion_tokens").asInt(0),
+                usage.path("total_tokens").asInt(0)
+            );
+        } else {
+            logger.info("Token Usage: Not provided by API");
+        }
+        
+        return rootNode.path("choices").get(0).path("message").path("content").asText();
     }
 
     @Override
@@ -172,9 +232,15 @@ public class OpenRouterProvider implements AiProvider {
                         "stream", true
                 );
 
-                logger.info("Sending streaming request to OpenRouter using model: {}", this.model);
-
                 String jsonBody = objectMapper.writeValueAsString(requestBody);
+
+                logger.info("--- AI Streaming Request ---");
+                logger.info("Provider: OpenRouter");
+                logger.info("Model: {}", this.model);
+                logger.info("Endpoint: {}", this.baseUrl);
+                logger.info("Prompt length: {}", jsonBody.length());
+                
+                long startTime = System.currentTimeMillis();
 
                 HttpRequest request = HttpRequest.newBuilder()
                         .uri(URI.create(baseUrl))
@@ -186,6 +252,11 @@ public class OpenRouterProvider implements AiProvider {
                         .build();
 
                 HttpResponse<Stream<String>> response = httpClient.send(request, HttpResponse.BodyHandlers.ofLines());
+                long duration = System.currentTimeMillis() - startTime;
+
+                logger.info("--- AI Streaming Connect ---");
+                logger.info("HTTP Status: {}", response.statusCode());
+                logger.info("Connection Time: {} ms", duration);
 
                 if (response.statusCode() != 200) {
                     emitter.send(SseEmitter.event().data("Error: OpenRouter returned status " + response.statusCode()));

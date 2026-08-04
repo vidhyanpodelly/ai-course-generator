@@ -99,7 +99,7 @@ Curricula.AI is a production-quality, Full Stack AI-powered educational applicat
 ### Backend Configurations
 1. Copy [.env.example](file:///.env.example) to a new file named `.env` in the root workspace.
 2. Edit the `.env` parameters to specify your database host/credentials and Base64 JWT secret.
-3. Configure the `GEMINI_API_KEY` parameter (or leave it as `mock_gemini_key` to run in mock simulation mode).
+3. Configure the `OPENROUTER_API_KEY` parameter. The backend uses the `nvidia/nemotron-3-ultra-550b-a55b:free` model by default.
 4. Configure `BREVO_API_KEY`, `BREVO_FROM_EMAIL`, and `BREVO_FROM_NAME` (e.g., `CurriculaAI`) for OTP email delivery.
 
 ### Running Backend

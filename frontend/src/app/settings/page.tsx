@@ -33,7 +33,7 @@ export default function SettingsPage() {
   );
 }
 
-type TabType = 'profile' | 'language' | 'security' | 'password' | 'notifications' | 'ai' | 'appearance' | 'account';
+type TabType = 'profile' | 'language' | 'security' | 'password' | 'notifications' | 'appearance' | 'account';
 
 function SettingsContent() {
   const router = useRouter();
@@ -59,10 +59,7 @@ function SettingsContent() {
   const [pushAlerts, setPushAlerts] = useState(true);
   const [weeklyDigest, setWeeklyDigest] = useState(false);
 
-  // AI preferences
-  const [aiModel, setAiModel] = useState('gemini-1.5-flash');
-  const [temperature, setTemperature] = useState(0.7);
-  const [explanationStyle, setExplanationStyle] = useState('balanced');
+
 
   // Appearance preferences
   const [themeMode, setThemeMode] = useState('dark');
@@ -100,9 +97,6 @@ function SettingsContent() {
                 setSelectedLang(prefs.language);
                 setLanguage(prefs.language);
               }
-              if (prefs.aiModel) setAiModel(prefs.aiModel);
-              if (prefs.temperature) setTemperature(Number(prefs.temperature));
-              if (prefs.explanationStyle) setExplanationStyle(prefs.explanationStyle);
               if (prefs.themeMode) setThemeMode(prefs.themeMode);
               if (prefs.accentColor) setAccentColor(prefs.accentColor);
               if (prefs.emailAlerts !== undefined) setEmailAlerts(prefs.emailAlerts);
@@ -136,9 +130,6 @@ function SettingsContent() {
       // 2. Build preferences object
       const prefs = {
         language: selectedLang,
-        aiModel,
-        temperature,
-        explanationStyle,
         themeMode,
         accentColor,
         emailAlerts,
@@ -274,17 +265,7 @@ function SettingsContent() {
             <span>{t('notifications')}</span>
           </button>
 
-          <button
-            onClick={() => setActiveTab('ai')}
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition text-left border ${
-              activeTab === 'ai'
-                ? 'bg-violet-600/10 border-violet-500/30 text-violet-400'
-                : 'bg-transparent border-transparent hover:bg-gray-900/60 text-gray-400 hover:text-white'
-            }`}
-          >
-            <Sliders className="h-4 w-4" />
-            <span>{t('aiPreferences')}</span>
-          </button>
+
 
           <button
             onClick={() => setActiveTab('appearance')}
@@ -562,71 +543,7 @@ function SettingsContent() {
             </form>
           )}
 
-          {activeTab === 'ai' && (
-            <form onSubmit={handleSave} className="space-y-6">
-              <h3 className="text-sm font-bold text-gray-300 border-b border-gray-900 pb-3">{t('aiPreferences')}</h3>
-              
-              <div className="space-y-4 max-w-md">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase">Default Model</label>
-                  <select
-                    value={aiModel}
-                    onChange={(e) => setAiModel(e.target.value)}
-                    className="w-full bg-gray-950 border border-gray-850 p-2.5 rounded-xl text-xs text-gray-300 focus:outline-none"
-                  >
-                    <option value="gemini-1.5-flash">Gemini 1.5 Flash (Default)</option>
-                    <option value="gemini-1.5-pro">Gemini 1.5 Pro (Detailed Analysis)</option>
-                    <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash (Experimental)</option>
-                  </select>
-                </div>
 
-                <div className="space-y-2">
-                  <div className="flex justify-between text-[10px] font-bold text-gray-500 uppercase">
-                    <span>Generation Temperature</span>
-                    <span className="text-violet-400">{temperature}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.1"
-                    value={temperature}
-                    onChange={(e) => setTemperature(Number(e.target.value))}
-                    className="w-full accent-violet-600 bg-gray-950 h-2 rounded-lg cursor-pointer"
-                  />
-                  <p className="text-[9px] text-gray-600 leading-normal">Lower values produce deterministic, factual answers. Higher values enhance creativity.</p>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase">Explanation Detail Level</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {['summarized', 'balanced', 'comprehensive'].map((style) => (
-                      <button
-                        type="button"
-                        key={style}
-                        onClick={() => setExplanationStyle(style)}
-                        className={`py-2 rounded-xl text-[10px] font-bold border capitalize transition ${
-                          explanationStyle === style
-                            ? 'bg-violet-600/10 border-violet-500/30 text-violet-400'
-                            : 'border-gray-800 bg-transparent text-gray-400 hover:text-white'
-                        }`}
-                      >
-                        {style}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="px-5 py-3 rounded-xl bg-violet-600 hover:bg-violet-700 text-xs font-bold text-white transition flex items-center justify-center space-x-2"
-              >
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <span>{t('saveChanges')}</span>}
-              </button>
-            </form>
-          )}
 
           {activeTab === 'appearance' && (
             <form onSubmit={handleSave} className="space-y-6">
