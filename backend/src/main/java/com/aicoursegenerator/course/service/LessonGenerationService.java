@@ -103,7 +103,12 @@ public class LessonGenerationService {
 
         } catch (Exception e) {
             logger.error("Failed to generate content for Lesson ID: {}", lessonId, e);
-            throw new RuntimeException("AI Lesson content generation failed", e);
+            lesson.setExplanation("### ⚠️ AI Generation Failed\nWe encountered an error while generating this lesson's content. Please try again later or check your API quotas.\n\n**Details:** " + e.getMessage());
+            lesson.setKeyTakeaways(List.of("Generation failed."));
+            lesson.setImportantNotes(List.of("Please retry later."));
+            lesson.setRealWorldExamples(List.of());
+            
+            return lessonRepository.save(lesson);
         }
     }
 }

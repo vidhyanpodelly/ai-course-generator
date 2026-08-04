@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage, Language } from '@/context/LanguageContext';
+import { useTheme } from '@/context/ThemeContext';
 import { evolutionService } from '@/services/evolution';
 import ProtectedRoute from '@/components/common/ProtectedRoute';
 import {
@@ -39,6 +40,7 @@ function SettingsContent() {
   const router = useRouter();
   const { user, logout } = useAuth();
   const { language, setLanguage, t } = useLanguage();
+  const { preferences: themePrefs, updatePreferences: setThemePrefs } = useTheme();
 
   // Selected tab state
   const [activeTab, setActiveTab] = useState<TabType>('profile');
@@ -60,10 +62,6 @@ function SettingsContent() {
   const [weeklyDigest, setWeeklyDigest] = useState(false);
 
 
-
-  // Appearance preferences
-  const [themeMode, setThemeMode] = useState('dark');
-  const [accentColor, setAccentColor] = useState('violet');
 
   // Security preferences
   const [twoFactorAuth, setTwoFactorAuth] = useState(false);
@@ -97,8 +95,6 @@ function SettingsContent() {
                 setSelectedLang(prefs.language);
                 setLanguage(prefs.language);
               }
-              if (prefs.themeMode) setThemeMode(prefs.themeMode);
-              if (prefs.accentColor) setAccentColor(prefs.accentColor);
               if (prefs.emailAlerts !== undefined) setEmailAlerts(prefs.emailAlerts);
               if (prefs.pushAlerts !== undefined) setPushAlerts(prefs.pushAlerts);
               if (prefs.twoFactorAuth !== undefined) setTwoFactorAuth(prefs.twoFactorAuth);
@@ -130,8 +126,6 @@ function SettingsContent() {
       // 2. Build preferences object
       const prefs = {
         language: selectedLang,
-        themeMode,
-        accentColor,
         emailAlerts,
         pushAlerts,
         twoFactorAuth
@@ -553,13 +547,13 @@ function SettingsContent() {
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-gray-500 uppercase">Color Scheme</label>
                   <div className="grid grid-cols-3 gap-2">
-                    {['dark', 'light', 'system'].map((theme) => (
+                    {(['dark', 'light', 'system'] as const).map((theme) => (
                       <button
                         type="button"
                         key={theme}
-                        onClick={() => setThemeMode(theme)}
+                        onClick={() => setThemePrefs({ theme })}
                         className={`py-2 rounded-xl text-[10px] font-bold border capitalize transition ${
-                          themeMode === theme
+                          themePrefs.theme === theme
                             ? 'bg-violet-600/10 border-violet-500/30 text-violet-400'
                             : 'border-gray-800 bg-transparent text-gray-400 hover:text-white'
                         }`}
@@ -573,7 +567,7 @@ function SettingsContent() {
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-gray-500 uppercase">Accent Tint</label>
                   <div className="flex gap-3">
-                    {['violet', 'indigo', 'emerald', 'amber'].map((color) => {
+                    {(['violet', 'indigo', 'emerald', 'amber'] as const).map((color) => {
                       const colorMap: Record<string, string> = {
                         violet: 'bg-violet-600',
                         indigo: 'bg-indigo-600',
@@ -584,9 +578,9 @@ function SettingsContent() {
                         <button
                           type="button"
                           key={color}
-                          onClick={() => setAccentColor(color)}
+                          onClick={() => setThemePrefs({ primaryColor: color })}
                           className={`w-7 h-7 rounded-full ${colorMap[color]} border-2 transition ${
-                            accentColor === color ? 'border-white scale-110 shadow-lg' : 'border-transparent hover:scale-105'
+                            themePrefs.primaryColor === color ? 'border-white scale-110 shadow-lg' : 'border-transparent hover:scale-105'
                           }`}
                         />
                       );

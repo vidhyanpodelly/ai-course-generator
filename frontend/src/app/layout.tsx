@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "@/styles/globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { LanguageProvider } from "@/context/LanguageContext";
+import { ThemeProvider } from "@/context/ThemeContext";
 
 export const metadata: Metadata = {
   title: "AI PDF E-Course Creator",
@@ -18,7 +19,9 @@ export default function RootLayout({
       <body className="bg-gray-950 text-gray-100 min-h-screen selection:bg-violet-500/30">
         <AuthProvider>
           <LanguageProvider>
-            {children}
+            <ThemeProvider>
+              {children}
+            </ThemeProvider>
           </LanguageProvider>
         </AuthProvider>
       </body>

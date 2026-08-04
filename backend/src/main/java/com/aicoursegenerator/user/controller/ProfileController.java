@@ -281,7 +281,12 @@ public class ProfileController {
         User user = userRepository.findById(userDetails.getUser().getId())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        user.setPreferences(body);
+        Map<String, Object> currentPrefs = user.getPreferences();
+        if (currentPrefs == null) {
+            currentPrefs = new HashMap<>();
+        }
+        currentPrefs.putAll(body);
+        user.setPreferences(currentPrefs);
         userRepository.save(user);
 
         return ResponseEntity.ok(ApiResponse.success("Preferences updated successfully", null));

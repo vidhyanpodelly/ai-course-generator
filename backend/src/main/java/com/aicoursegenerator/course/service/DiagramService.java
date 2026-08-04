@@ -5,6 +5,9 @@ import com.aicoursegenerator.ai.service.AiProviderFactory;
 import com.aicoursegenerator.common.exception.ResourceNotFoundException;
 import com.aicoursegenerator.course.entity.Chapter;
 import com.aicoursegenerator.course.entity.MindMap;
+import com.aicoursegenerator.course.dto.MindMapResponse;
+import com.aicoursegenerator.course.dto.FlowchartResponse;
+import com.aicoursegenerator.course.dto.SequenceResponse;
 import com.aicoursegenerator.course.repository.ChapterRepository;
 import com.aicoursegenerator.course.repository.MindMapRepository;
 import com.aicoursegenerator.pdf.entity.PDFChunk;
@@ -28,16 +31,19 @@ public class DiagramService {
     private final ChapterRepository chapterRepository;
     private final PDFChunkRepository chunkRepository;
     private final AiProviderFactory providerFactory;
+    private final MermaidGenerator mermaidGenerator;
 
     public DiagramService(
             MindMapRepository mindMapRepository,
             ChapterRepository chapterRepository,
             PDFChunkRepository chunkRepository,
-            AiProviderFactory providerFactory) {
+            AiProviderFactory providerFactory,
+            MermaidGenerator mermaidGenerator) {
         this.mindMapRepository = mindMapRepository;
         this.chapterRepository = chapterRepository;
         this.chunkRepository = chunkRepository;
         this.providerFactory = providerFactory;
+        this.mermaidGenerator = mermaidGenerator;
     }
 
     @Transactional
@@ -81,20 +87,18 @@ public class DiagramService {
                 contextBuilder.append(chunk.getContent()).append("\n");
             }
 
-            String userPrompt = "Create a Mermaid.js mindmap diagram representing the core topics, subtopics, and concepts of the chapter: '" + chapter.getTitle() + "'.\n" +
+            String userPrompt = "Create a hierarchical mindmap representing the core topics, subtopics, and concepts of the chapter: '" + chapter.getTitle() + "'.\n" +
                                "Chapter Summary: " + (chapter.getSummary() != null ? chapter.getSummary() : "") + "\n\n" +
-                               "Context document:\n" + contextBuilder.toString() + "\n\n" +
-                               "Requirements:\n" +
-                               "1. The diagram must start with 'mindmap' line.\n" +
-                               "2. Ensure valid indentation and parentheses syntax: e.g. root((Chapter Title))\n" +
-                               "3. Output ONLY the raw Mermaid diagram text. Do not wrap it in markdown block tags like ```mermaid. No other headers or notes.";
+                               "Context document:\n" + contextBuilder.toString();
 
             AiProvider provider = providerFactory.getProvider();
-            String mermaidData = provider.generateText(
-                    "You are an academic layout compiler. Produce only raw valid Mermaid.js syntax.",
-                    userPrompt
+            MindMapResponse mindMapResponse = provider.generateStructuredJson(
+                    "You are an academic layout compiler. Produce a well-structured JSON tree for a mind map.",
+                    userPrompt,
+                    MindMapResponse.class
             );
-            mermaidData = cleanMermaidData(mermaidData);
+            
+            String mermaidData = mermaidGenerator.generateMindMap(mindMapResponse);
 
             MindMap mapEntity = new MindMap(UUID.randomUUID(), chapter, mermaidData);
             mindMapRepository.save(mapEntity);
@@ -138,37 +142,39 @@ public class DiagramService {
 
             String diagramDetails = "";
             switch (type.toUpperCase()) {
-                case "FLOWCHART":
-                    diagramDetails = "Generate a flowchart showing the procedural workflow or conceptual flow of topics in this chapter. Use 'graph TD' syntax.";
-                    break;
                 case "SEQUENCE":
-                    diagramDetails = "Generate a sequence diagram showing interactions of components or actors in this topic. Use 'sequenceDiagram' syntax.";
+                    diagramDetails = "Generate a sequence diagram showing interactions of components or actors in this topic.";
                     break;
-                case "CLASS":
-                    diagramDetails = "Generate a class diagram showing classification or object structures in this topic. Use 'classDiagram' syntax.";
-                    break;
-                case "ERD":
-                    diagramDetails = "Generate an Entity-Relationship Diagram showing key entities, attributes, and relationships. Use 'erDiagram' syntax.";
-                    break;
+                case "FLOWCHART":
                 default:
-                    diagramDetails = "Generate a flowchart using 'graph TD' syntax.";
+                    diagramDetails = "Generate a flowchart showing the procedural workflow or conceptual flow of topics in this chapter.";
+                    type = "FLOWCHART";
+                    break;
             }
 
             String userPrompt = diagramDetails + "\n" +
                                "Chapter Title: " + chapter.getTitle() + "\n" +
                                "Chapter Summary: " + (chapter.getSummary() != null ? chapter.getSummary() : "") + "\n\n" +
-                               "Context document:\n" + contextBuilder.toString() + "\n\n" +
-                               "Requirements:\n" +
-                               "1. Output ONLY the raw Mermaid diagram syntax.\n" +
-                               "2. Do not wrap it in markdown block tags like ```mermaid.\n" +
-                               "3. Ensure the syntax is completely valid for Mermaid rendering.";
+                               "Context document:\n" + contextBuilder.toString();
 
             AiProvider provider = providerFactory.getProvider();
-            String mermaidData = provider.generateText(
-                    "You are an academic layout compiler. Produce only raw valid Mermaid.js syntax.",
-                    userPrompt
-            );
-            mermaidData = cleanMermaidData(mermaidData);
+            String mermaidData = "";
+
+            if (type.equalsIgnoreCase("SEQUENCE")) {
+                SequenceResponse seqResponse = provider.generateStructuredJson(
+                        "You are an academic layout compiler. Produce a valid JSON graph for a sequence diagram with actors and messages.",
+                        userPrompt,
+                        SequenceResponse.class
+                );
+                mermaidData = mermaidGenerator.generateSequence(seqResponse);
+            } else {
+                FlowchartResponse flowResponse = provider.generateStructuredJson(
+                        "You are an academic layout compiler. Produce a valid JSON graph for a flowchart with nodes and edges.",
+                        userPrompt,
+                        FlowchartResponse.class
+                );
+                mermaidData = mermaidGenerator.generateFlowchart(flowResponse);
+            }
 
             return mermaidData;
 

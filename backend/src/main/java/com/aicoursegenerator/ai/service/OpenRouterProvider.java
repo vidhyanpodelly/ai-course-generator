@@ -43,9 +43,16 @@ public class OpenRouterProvider implements AiProvider {
                 .connectTimeout(Duration.ofSeconds(20))
                 .build();
                 
-        logger.info("Active AI Provider: OpenRouter (Model: {}, Key length: {})", 
+        logger.info("Active AI Provider: OpenRouter (Primary Model: {}, Key length: {})", 
                     model, apiKey != null ? apiKey.length() : 0);
     }
+
+    private static final String[] FALLBACK_MODELS = {
+            "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "deepseek/deepseek-r1:free",
+            "qwen/qwen-2.5-coder-32b-instruct:free",
+            "google/gemma-3-27b-it:free"
+    };
 
     @Override
     public String generateText(String systemPrompt, String userPrompt) {
@@ -65,38 +72,38 @@ public class OpenRouterProvider implements AiProvider {
     }
 
     private String executeWithRetry(String systemPrompt, String userPrompt, boolean requireJson) {
-        int maxRetries = 3;
-        int delayMs = 2000;
+        int maxRetries = FALLBACK_MODELS.length;
+        int delayMs = 1500;
 
-        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            String currentModel = FALLBACK_MODELS[attempt];
             try {
                 String prompt = userPrompt;
-                if (requireJson && attempt > 1) {
+                if (requireJson && attempt > 0) {
                     prompt += "\n\nIMPORTANT: You must return ONLY a valid JSON object matching the requested schema. Do not enclose it in markdown blocks. Output raw JSON only.";
                 }
                 
-                return callOpenRouterApi(systemPrompt, prompt);
+                return callOpenRouterApi(systemPrompt, prompt, currentModel);
                 
             } catch (Exception e) {
                 boolean isRetryable = isRetryableError(e);
-                logger.error("Attempt {} failed for OpenRouter API: {}", attempt, e.getMessage());
+                logger.error("Attempt {} failed with model {}: {}", attempt + 1, currentModel, e.getMessage());
                 
-                if (attempt == maxRetries || !isRetryable) {
-                    logger.error("Exhausted retries or non-retryable error. Propagating failure.");
+                if (attempt == maxRetries - 1 || !isRetryable) {
+                    logger.error("Exhausted all fallback models or non-retryable error. Propagating failure.");
                     throw new RuntimeException(e.getMessage(), e);
                 }
                 
                 try {
-                    logger.info("Waiting {}ms before next attempt...", delayMs);
+                    logger.info("Falling back to next model. Waiting {}ms...", delayMs);
                     Thread.sleep(delayMs);
-                    delayMs *= 2; // Exponential backoff: 2s, 4s, 8s
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
-                    throw new RuntimeException("Thread interrupted during backoff", ie);
+                    throw new RuntimeException("Thread interrupted during fallback", ie);
                 }
             }
         }
-        throw new RuntimeException("OpenRouter API failed after " + maxRetries + " attempts");
+        throw new RuntimeException("OpenRouter API failed across all fallback models");
     }
 
     private boolean isRetryableError(Exception e) {
@@ -161,9 +168,9 @@ public class OpenRouterProvider implements AiProvider {
         return response.trim();
     }
 
-    private String callOpenRouterApi(String systemPrompt, String userPrompt) throws Exception {
+    private String callOpenRouterApi(String systemPrompt, String userPrompt, String currentModel) throws Exception {
         Map<String, Object> requestBody = Map.of(
-                "model", this.model,
+                "model", currentModel,
                 "messages", List.of(
                         Map.of("role", "system", "content", systemPrompt),
                         Map.of("role", "user", "content", userPrompt)
@@ -174,7 +181,7 @@ public class OpenRouterProvider implements AiProvider {
         
         logger.info("--- AI Request ---");
         logger.info("Provider: OpenRouter");
-        logger.info("Model: {}", this.model);
+        logger.info("Model: {}", currentModel);
         logger.info("Endpoint: {}", this.baseUrl);
         logger.info("Prompt length: {}", jsonBody.length());
         
@@ -221,10 +228,20 @@ public class OpenRouterProvider implements AiProvider {
 
     @Override
     public void streamText(String systemPrompt, String userPrompt, SseEmitter emitter, Consumer<String> onComplete) {
+        streamTextWithFallback(systemPrompt, userPrompt, emitter, onComplete, 0);
+    }
+
+    private void streamTextWithFallback(String systemPrompt, String userPrompt, SseEmitter emitter, Consumer<String> onComplete, int attemptIndex) {
+        if (attemptIndex >= FALLBACK_MODELS.length) {
+            emitter.completeWithError(new RuntimeException("All fallback models failed for streaming"));
+            return;
+        }
+        String currentModel = FALLBACK_MODELS[attemptIndex];
+        
         new Thread(() -> {
             try {
                 Map<String, Object> requestBody = Map.of(
-                        "model", this.model,
+                        "model", currentModel,
                         "messages", List.of(
                                 Map.of("role", "system", "content", systemPrompt),
                                 Map.of("role", "user", "content", userPrompt)
@@ -236,7 +253,7 @@ public class OpenRouterProvider implements AiProvider {
 
                 logger.info("--- AI Streaming Request ---");
                 logger.info("Provider: OpenRouter");
-                logger.info("Model: {}", this.model);
+                logger.info("Model: {}", currentModel);
                 logger.info("Endpoint: {}", this.baseUrl);
                 logger.info("Prompt length: {}", jsonBody.length());
                 
@@ -293,10 +310,15 @@ public class OpenRouterProvider implements AiProvider {
                     onComplete.accept(fullContent.toString());
                 }
                 emitter.complete();
-
             } catch (Exception e) {
-                logger.error("Error in OpenRouter streaming: {}", e.getMessage(), e);
-                emitter.completeWithError(e);
+                logger.error("Streaming failed for model {}: {}", currentModel, e.getMessage());
+                if (isRetryableError(e)) {
+                    logger.info("Attempting fallback for streaming...");
+                    streamTextWithFallback(systemPrompt, userPrompt, emitter, onComplete, attemptIndex + 1);
+                } else {
+                    logger.error("Non-retryable streaming error.", e);
+                    emitter.completeWithError(e);
+                }
             }
         }).start();
     }

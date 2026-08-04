@@ -314,28 +314,6 @@ function MindMapContent({ courseId }: { courseId: string }) {
                 <span>Sequence Diagram</span>
               </button>
 
-              <button
-                onClick={() => setSelectedType('CLASS')}
-                className={`flex items-center space-x-2.5 px-4 py-3 rounded-xl border text-left text-xs font-semibold transition ${
-                  selectedType === 'CLASS'
-                    ? 'border-violet-500/30 bg-violet-600/10 text-violet-400'
-                    : 'border-gray-900 bg-gray-900/10 text-gray-400 hover:text-white hover:border-gray-800'
-                }`}
-              >
-                <Blocks className="h-4 w-4 shrink-0" />
-                <span>Class Structure</span>
-              </button>
-
-              <button
-                onClick={() => setSelectedType('ERD')}
-                className={`flex items-center space-x-2.5 px-4 py-3 rounded-xl border text-left text-xs font-semibold transition ${
-                  selectedType === 'ERD'
-                    ? 'border-violet-500/30 bg-violet-600/10 text-violet-400'
-                    : 'border-gray-900 bg-gray-900/10 text-gray-400 hover:text-white hover:border-gray-800'
-                }`}
-              >
-                <GitFork className="h-4 w-4 shrink-0" />
-                <span>Entity Relationship (ERD)</span>
               </button>
             </div>
           </div>
@@ -407,13 +385,24 @@ function MindMapContent({ courseId }: { courseId: string }) {
             ) : svgContent ? (
               <div
                 ref={canvasContainerRef}
-                className="transition-transform duration-75 flex items-center justify-center bg-gray-900/5 border border-gray-900/10 p-8 rounded-2xl shadow-inner min-w-[300px] min-h-[300px]"
+                className="mermaid-container transition-transform duration-75 flex items-center justify-center bg-gray-900/5 border border-gray-900/10 p-8 rounded-2xl shadow-inner min-w-[300px] min-h-[300px]"
                 style={{ 
                   transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale})`,
-                  cursor: isDragging ? 'grabbing' : 'grab'
+                  cursor: isDragging ? 'grabbing' : 'grab',
+                  width: '100%',
+                  height: '100%'
                 }}
-                dangerouslySetInnerHTML={{ __html: svgContent }}
-              />
+              >
+                <style dangerouslySetInnerHTML={{__html: `
+                  .mermaid-container svg {
+                    width: 100% !important;
+                    height: auto !important;
+                    max-width: none !important;
+                    max-height: 80vh !important;
+                  }
+                `}} />
+                <div dangerouslySetInnerHTML={{ __html: svgContent }} className="w-full h-full flex justify-center items-center" />
+              </div>
             ) : (
               <p className="text-xs text-gray-600">Select a chapter topic and diagram style to view visualization</p>
             )}
