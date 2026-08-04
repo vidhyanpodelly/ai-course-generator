@@ -313,8 +313,6 @@ function MindMapContent({ courseId }: { courseId: string }) {
                 <ArrowRightLeft className="h-4 w-4 shrink-0" />
                 <span>Sequence Diagram</span>
               </button>
-
-              </button>
             </div>
           </div>
         </div>

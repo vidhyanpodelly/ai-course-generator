@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { profileService } from '@/services/profile';
 
 type ThemeType = 'light' | 'dark' | 'system';
-type PrimaryColorType = 'violet' | 'blue' | 'green' | 'rose';
+type PrimaryColorType = 'violet' | 'indigo' | 'emerald' | 'amber';
 
 interface ThemePreferences {
   theme: ThemeType;
