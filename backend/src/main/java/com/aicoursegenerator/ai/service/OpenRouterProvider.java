@@ -132,6 +132,8 @@ public class OpenRouterProvider implements AiProvider {
                     )
             );
             
+            logger.info("Sending request to OpenRouter using model: {}", this.model);
+            
             String jsonBody = objectMapper.writeValueAsString(requestBody);
             
             HttpRequest request = HttpRequest.newBuilder()
@@ -169,6 +171,8 @@ public class OpenRouterProvider implements AiProvider {
                         ),
                         "stream", true
                 );
+
+                logger.info("Sending streaming request to OpenRouter using model: {}", this.model);
 
                 String jsonBody = objectMapper.writeValueAsString(requestBody);
 
