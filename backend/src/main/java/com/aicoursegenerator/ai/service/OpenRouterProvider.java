@@ -209,7 +209,18 @@ public class OpenRouterProvider implements AiProvider {
             throw new RuntimeException("OpenRouter returned status " + response.statusCode() + ": " + response.body());
         }
         
+        logger.debug("Raw OpenRouter Response: {}", response.body());
         JsonNode rootNode = objectMapper.readTree(response.body());
+        
+        if (rootNode.has("error")) {
+            String errorMsg = rootNode.path("error").path("message").asText("Unknown AI Error");
+            logger.error("OpenRouter API Error: {}", errorMsg);
+            throw new com.aicoursegenerator.ai.exception.AIResponseParsingException("OpenRouter API Error: " + errorMsg);
+        }
+
+        if (!rootNode.has("choices") || !rootNode.get("choices").isArray() || rootNode.get("choices").size() == 0) {
+            throw new com.aicoursegenerator.ai.exception.AIResponseParsingException("Malformed OpenRouter Response: Missing or empty 'choices' array");
+        }
         
         // Try to log token usage
         if (rootNode.has("usage")) {
@@ -223,7 +234,12 @@ public class OpenRouterProvider implements AiProvider {
             logger.info("Token Usage: Not provided by API");
         }
         
-        return rootNode.path("choices").get(0).path("message").path("content").asText();
+        JsonNode firstChoice = rootNode.get("choices").get(0);
+        if (firstChoice == null || firstChoice.isMissingNode() || firstChoice.isNull()) {
+            throw new com.aicoursegenerator.ai.exception.AIResponseParsingException("Malformed OpenRouter Response: First choice is null");
+        }
+        
+        return firstChoice.path("message").path("content").asText();
     }
 
     @Override
@@ -288,16 +304,26 @@ public class OpenRouterProvider implements AiProvider {
                         String data = line.substring(6);
                         try {
                             JsonNode rootNode = objectMapper.readTree(data);
+                            
+                            if (rootNode.has("error")) {
+                                String errorMsg = rootNode.path("error").path("message").asText("Unknown AI Error");
+                                logger.error("OpenRouter API Error in stream: {}", errorMsg);
+                                throw new com.aicoursegenerator.ai.exception.AIResponseParsingException("OpenRouter API Error in stream: " + errorMsg);
+                            }
+                            
                             JsonNode choices = rootNode.path("choices");
                             if (choices.isArray() && choices.size() > 0) {
-                                JsonNode delta = choices.get(0).path("delta");
-                                if (delta.has("content")) {
-                                    String text = delta.get("content").asText();
-                                    fullContent.append(text);
-                                    
-                                    Map<String, String> chunkMap = Map.of("text", text);
-                                    String chunkJson = objectMapper.writeValueAsString(chunkMap);
-                                    emitter.send(SseEmitter.event().data(chunkJson));
+                                JsonNode firstChoice = choices.get(0);
+                                if (firstChoice != null && !firstChoice.isMissingNode() && !firstChoice.isNull()) {
+                                    JsonNode delta = firstChoice.path("delta");
+                                    if (delta.has("content")) {
+                                        String text = delta.get("content").asText();
+                                        fullContent.append(text);
+                                        
+                                        Map<String, String> chunkMap = Map.of("text", text);
+                                        String chunkJson = objectMapper.writeValueAsString(chunkMap);
+                                        emitter.send(SseEmitter.event().data(chunkJson));
+                                    }
                                 }
                             }
                         } catch (Exception e) {
