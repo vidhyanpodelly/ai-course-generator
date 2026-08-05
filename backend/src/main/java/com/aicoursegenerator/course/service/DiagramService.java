@@ -3,11 +3,11 @@ package com.aicoursegenerator.course.service;
 import com.aicoursegenerator.ai.service.AiProvider;
 import com.aicoursegenerator.ai.service.AiProviderFactory;
 import com.aicoursegenerator.common.exception.ResourceNotFoundException;
+import com.aicoursegenerator.common.exception.BadRequestException;
 import com.aicoursegenerator.course.entity.Chapter;
 import com.aicoursegenerator.course.entity.MindMap;
 import com.aicoursegenerator.course.dto.MindMapResponse;
 import com.aicoursegenerator.course.dto.FlowchartResponse;
-import com.aicoursegenerator.course.dto.SequenceResponse;
 import com.aicoursegenerator.course.repository.ChapterRepository;
 import com.aicoursegenerator.course.repository.MindMapRepository;
 import com.aicoursegenerator.pdf.entity.PDFChunk;
@@ -30,6 +30,7 @@ public class DiagramService {
     private final MindMapRepository mindMapRepository;
     private final ChapterRepository chapterRepository;
     private final PDFChunkRepository chunkRepository;
+    private final com.aicoursegenerator.course.repository.LessonRepository lessonRepository;
     private final AiProviderFactory providerFactory;
     private final MermaidGenerator mermaidGenerator;
 
@@ -37,11 +38,13 @@ public class DiagramService {
             MindMapRepository mindMapRepository,
             ChapterRepository chapterRepository,
             PDFChunkRepository chunkRepository,
+            com.aicoursegenerator.course.repository.LessonRepository lessonRepository,
             AiProviderFactory providerFactory,
             MermaidGenerator mermaidGenerator) {
         this.mindMapRepository = mindMapRepository;
         this.chapterRepository = chapterRepository;
         this.chunkRepository = chunkRepository;
+        this.lessonRepository = lessonRepository;
         this.providerFactory = providerFactory;
         this.mermaidGenerator = mermaidGenerator;
     }
@@ -87,8 +90,18 @@ public class DiagramService {
                 contextBuilder.append(chunk.getContent()).append("\n");
             }
 
+            List<com.aicoursegenerator.course.entity.Lesson> lessons = lessonRepository.findByChapterOrderBySequenceNumberAsc(chapter);
+            StringBuilder lessonsStr = new StringBuilder();
+            for (com.aicoursegenerator.course.entity.Lesson lesson : lessons) {
+                lessonsStr.append("- ").append(lesson.getTitle()).append("\n");
+                if (lesson.getExplanation() != null && !lesson.getExplanation().isEmpty()) {
+                    lessonsStr.append("  ").append(lesson.getExplanation().length() > 200 ? lesson.getExplanation().substring(0, 200) + "..." : lesson.getExplanation()).append("\n");
+                }
+            }
+
             String userPrompt = "Create a hierarchical mindmap representing the core topics, subtopics, and concepts of the chapter: '" + chapter.getTitle() + "'.\n" +
                                "Chapter Summary: " + (chapter.getSummary() != null ? chapter.getSummary() : "") + "\n\n" +
+                               "Lessons in this chapter:\n" + lessonsStr.toString() + "\n\n" +
                                "Context document:\n" + contextBuilder.toString();
 
             AiProvider provider = providerFactory.getProvider();
@@ -141,40 +154,33 @@ public class DiagramService {
             }
 
             String diagramDetails = "";
-            switch (type.toUpperCase()) {
-                case "SEQUENCE":
-                    diagramDetails = "Generate a sequence diagram showing interactions of components or actors in this topic.";
-                    break;
-                case "FLOWCHART":
-                default:
-                    diagramDetails = "Generate a flowchart showing the procedural workflow or conceptual flow of topics in this chapter.";
-                    type = "FLOWCHART";
-                    break;
+            if (type.equalsIgnoreCase("FLOWCHART")) {
+                diagramDetails = "Generate a flowchart showing the procedural workflow or conceptual flow of topics in this chapter.";
+            } else {
+                throw new BadRequestException("Unsupported diagram type. Only FLOWCHART is supported.");
+            }
+
+            List<com.aicoursegenerator.course.entity.Lesson> lessons = lessonRepository.findByChapterOrderBySequenceNumberAsc(chapter);
+            StringBuilder lessonsStr = new StringBuilder();
+            for (com.aicoursegenerator.course.entity.Lesson lesson : lessons) {
+                lessonsStr.append("- ").append(lesson.getTitle()).append("\n");
             }
 
             String userPrompt = diagramDetails + "\n" +
                                "Chapter Title: " + chapter.getTitle() + "\n" +
-                               "Chapter Summary: " + (chapter.getSummary() != null ? chapter.getSummary() : "") + "\n\n" +
+                               "Chapter Summary: " + (chapter.getSummary() != null ? chapter.getSummary() : "") + "\n" +
+                               "Lessons:\n" + lessonsStr.toString() + "\n\n" +
                                "Context document:\n" + contextBuilder.toString();
 
             AiProvider provider = providerFactory.getProvider();
             String mermaidData = "";
 
-            if (type.equalsIgnoreCase("SEQUENCE")) {
-                SequenceResponse seqResponse = provider.generateStructuredJson(
-                        "You are an academic layout compiler. Produce a valid JSON graph for a sequence diagram with actors and messages.",
-                        userPrompt,
-                        SequenceResponse.class
-                );
-                mermaidData = mermaidGenerator.generateSequence(seqResponse);
-            } else {
-                FlowchartResponse flowResponse = provider.generateStructuredJson(
-                        "You are an academic layout compiler. Produce a valid JSON graph for a flowchart with nodes and edges.",
-                        userPrompt,
-                        FlowchartResponse.class
-                );
-                mermaidData = mermaidGenerator.generateFlowchart(flowResponse);
-            }
+            FlowchartResponse flowResponse = provider.generateStructuredJson(
+                    "You are an academic layout compiler. Produce a valid JSON graph for a flowchart with nodes and edges.",
+                    userPrompt,
+                    FlowchartResponse.class
+            );
+            mermaidData = mermaidGenerator.generateFlowchart(flowResponse);
 
             return mermaidData;
 
@@ -184,19 +190,6 @@ public class DiagramService {
         }
     }
 
-    private String cleanMermaidData(String data) {
-        if (data == null) return "";
-        String cleaned = data.trim();
-        if (cleaned.startsWith("```mermaid")) {
-            cleaned = cleaned.substring(10);
-        } else if (cleaned.startsWith("```")) {
-            cleaned = cleaned.substring(3);
-        }
-        if (cleaned.endsWith("```")) {
-            cleaned = cleaned.substring(0, cleaned.length() - 3);
-        }
-        return cleaned.trim();
-    }
 
     private String generateMockMindMap(String title) {
         String cleanTitle = title.replace("(", "").replace(")", "");

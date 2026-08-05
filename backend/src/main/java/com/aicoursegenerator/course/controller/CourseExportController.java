@@ -27,21 +27,30 @@ public class CourseExportController {
             @RequestParam(value = "format", defaultValue = "MD") String format,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
         
-        String content;
         String filenameExtension;
         MediaType mediaType;
+        byte[] bytes;
 
         if ("HTML".equalsIgnoreCase(format)) {
-            content = exportService.exportHtml(courseId, userDetails.getUser());
+            String content = exportService.exportHtml(courseId, userDetails.getUser());
+            bytes = content.getBytes(StandardCharsets.UTF_8);
             filenameExtension = "html";
             mediaType = MediaType.TEXT_HTML;
+        } else if ("PDF".equalsIgnoreCase(format)) {
+            bytes = exportService.exportPdf(courseId, userDetails.getUser());
+            filenameExtension = "pdf";
+            mediaType = MediaType.APPLICATION_PDF;
+        } else if ("ZIP".equalsIgnoreCase(format)) {
+            bytes = exportService.exportZip(courseId, userDetails.getUser());
+            filenameExtension = "zip";
+            mediaType = MediaType.parseMediaType("application/zip");
         } else {
-            content = exportService.exportMarkdown(courseId, userDetails.getUser());
+            String content = exportService.exportMarkdown(courseId, userDetails.getUser());
+            bytes = content.getBytes(StandardCharsets.UTF_8);
             filenameExtension = "md";
             mediaType = MediaType.TEXT_MARKDOWN;
         }
 
-        byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
         String filename = "course_export_" + courseId + "." + filenameExtension;
 
         return ResponseEntity.ok()

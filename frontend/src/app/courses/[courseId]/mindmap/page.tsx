@@ -41,7 +41,7 @@ function MindMapContent({ courseId }: { courseId: string }) {
   const [course, setCourse] = useState<Course | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [selectedChapterId, setSelectedChapterId] = useState<string>('');
-  const [selectedType, setSelectedType] = useState<'MINDMAP' | 'FLOWCHART' | 'SEQUENCE' | 'CLASS' | 'ERD'>('MINDMAP');
+  const [selectedType, setSelectedType] = useState<'MINDMAP' | 'FLOWCHART'>('MINDMAP');
   
   const [mermaidCode, setMermaidCode] = useState<string>('');
   const [svgContent, setSvgContent] = useState<string>('');
@@ -300,18 +300,6 @@ function MindMapContent({ courseId }: { courseId: string }) {
               >
                 <Workflow className="h-4 w-4 shrink-0" />
                 <span>Concept Flowchart</span>
-              </button>
-
-              <button
-                onClick={() => setSelectedType('SEQUENCE')}
-                className={`flex items-center space-x-2.5 px-4 py-3 rounded-xl border text-left text-xs font-semibold transition ${
-                  selectedType === 'SEQUENCE'
-                    ? 'border-violet-500/30 bg-violet-600/10 text-violet-400'
-                    : 'border-gray-900 bg-gray-900/10 text-gray-400 hover:text-white hover:border-gray-800'
-                }`}
-              >
-                <ArrowRightLeft className="h-4 w-4 shrink-0" />
-                <span>Sequence Diagram</span>
               </button>
             </div>
           </div>

@@ -45,15 +45,37 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     if (!isLoaded) return;
     
     const root = document.documentElement;
-    if (preferences.theme === 'light') {
-      root.classList.remove('dark');
-      root.classList.add('light');
-    } else {
-      root.classList.remove('light');
-      root.classList.add('dark');
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    
+    const applyTheme = () => {
+      let activeTheme = preferences.theme;
+      if (activeTheme === 'system') {
+        activeTheme = mediaQuery.matches ? 'dark' : 'light';
+      }
+      
+      if (activeTheme === 'light') {
+        root.classList.remove('dark');
+        root.classList.add('light');
+      } else {
+        root.classList.remove('light');
+        root.classList.add('dark');
+      }
+    };
+
+    applyTheme();
+    
+    if (preferences.theme === 'system') {
+      mediaQuery.addEventListener('change', applyTheme);
     }
+    
+    // Apply Primary Color as data attribute for CSS targeting
+    root.setAttribute('data-primary-color', preferences.primaryColor);
 
     localStorage.setItem('theme_preferences', JSON.stringify(preferences));
+    
+    return () => {
+      mediaQuery.removeEventListener('change', applyTheme);
+    };
 
   }, [preferences, isLoaded]);
 

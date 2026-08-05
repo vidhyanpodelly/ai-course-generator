@@ -14,9 +14,9 @@ Curricula.AI is a production-quality, Full Stack AI-powered educational applicat
 │       └── main/
 │           ├── java/com/aicoursegenerator/
 │           │   ├── AICourseGeneratorApplication.java # Launcher
-│           │   ├── ai/            # LLM Adapters and Strategies
+│           │   ├── ai/            # AI Provider Interface and Generic Implementations
 │           │   │   ├── provider/
-│           │   │   └── service/   # PromptLoader, AiProviderFactory, GroqProvider
+│           │   │   └── service/   # PromptLoader, AiProviderFactory, OpenAICompatibleProvider
 │           │   ├── auth/          # Authentication controllers and requests validation
 │           │   │   ├── controller/
 │           │   │   └── dto/
@@ -99,7 +99,7 @@ Curricula.AI is a production-quality, Full Stack AI-powered educational applicat
 ### Backend Configurations
 1. Copy [.env.example](file:///.env.example) to a new file named `.env` in the root workspace.
 2. Edit the `.env` parameters to specify your database host/credentials and Base64 JWT secret.
-3. Configure the `OPENROUTER_API_KEY` parameter. The backend uses the `nvidia/nemotron-3-ultra-550b-a55b:free` model by default.
+3. Start the OmniRoute AI gateway (or another OpenAI-compatible server) on port `20128`. By default, the application connects to `http://localhost:20128/v1` and requests the `course-generator` model.
 4. Configure `BREVO_API_KEY`, `BREVO_FROM_EMAIL`, and `BREVO_FROM_NAME` (e.g., `CurriculaAI`) for OTP email delivery.
 
 ### Running Backend
@@ -171,7 +171,7 @@ All API responses are wrapped in a standard JSON structure:
 2. **Library Upload**: Click the dashed upload area to choose any study PDF. The document parsing pipeline chunks text and maps indexes.
 3. **Build Course**: Locate the parsed document inside the "Library" list, click the **Build** button. This spawns the background async outline thread pool.
 4. **Open Syllabus**: The course card switches to ready status. Click **Open** to navigate the course structure and view prerequisites/learning goals.
-5. **Lazy Load Lessons**: Expand a chapter and click **Study** on any lesson. LLaMA 3 extracts contextual matches and generates rich markdown details in ~2-4 seconds.
+5. **Lazy Load Lessons**: Expand a chapter and click **Study** on any lesson. OmniRoute processes the contextual matches and generates rich markdown details in ~2-4 seconds.
 6. **Chat with AI Tutor**: Type a query in the chatbox (e.g. "What does modularity mean?"). The RAG chatbot performs FTS retrieval on the document chunks and responds.
 7. **Complete Checkpoint**: Click **Mark as Complete** at the bottom of the lesson. The progress bar updates.
 8. **Quiz Time**: Click **Take Chapter Quiz** at the end of the chapter list. Answer the 5 generated questions, submit, and read explanations.

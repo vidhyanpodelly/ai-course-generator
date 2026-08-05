@@ -20,9 +20,9 @@ import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 @Service
-public class OpenRouterProvider implements AiProvider {
+public class OpenAICompatibleProvider implements AiProvider {
 
-    private static final Logger logger = LoggerFactory.getLogger(OpenRouterProvider.class);
+    private static final Logger logger = LoggerFactory.getLogger(OpenAICompatibleProvider.class);
 
     private final String apiKey;
     private final String model;
@@ -30,29 +30,24 @@ public class OpenRouterProvider implements AiProvider {
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
-    public OpenRouterProvider(
-            @Value("${ai.openrouter.key:}") String apiKey,
-            @Value("${ai.openrouter.model:nvidia/nemotron-3-ultra-550b-a55b:free}") String model,
-            @Value("${ai.openrouter.url:https://openrouter.ai/api/v1/chat/completions}") String baseUrl,
+    public OpenAICompatibleProvider(
+            @Value("${ai.api-key:}") String apiKey,
+            @Value("${ai.model:course-generator}") String model,
+            @Value("${ai.base-url:http://localhost:20128/v1}") String baseUrl,
             ObjectMapper objectMapper) {
         this.apiKey = apiKey;
         this.model = model;
-        this.baseUrl = baseUrl;
+        // Ensure trailing slash for consistent endpoint building
+        this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
         this.objectMapper = objectMapper;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(20))
                 .build();
                 
-        logger.info("Active AI Provider: OpenRouter (Primary Model: {}, Key length: {})", 
-                    model, apiKey != null ? apiKey.length() : 0);
+        logger.info("Active AI Provider: Generic OpenAI Compatible API");
+        logger.info("Base URL: {}", this.baseUrl);
+        logger.info("Model combo string: {}", this.model);
     }
-
-    private static final String[] FALLBACK_MODELS = {
-            "nvidia/nemotron-3-ultra-550b-a55b:free",
-            "deepseek/deepseek-r1:free",
-            "qwen/qwen-2.5-coder-32b-instruct:free",
-            "google/gemma-3-27b-it:free"
-    };
 
     @Override
     public String generateText(String systemPrompt, String userPrompt) {
@@ -62,54 +57,58 @@ public class OpenRouterProvider implements AiProvider {
     @Override
     public <T> T generateStructuredJson(String systemPrompt, String userPrompt, Class<T> responseClass) {
         String jsonResponse = executeWithRetry(systemPrompt, userPrompt, true);
-        jsonResponse = cleanJsonResponse(jsonResponse);
+        String cleanedResponse = cleanJsonResponse(jsonResponse);
         try {
-            return objectMapper.readValue(jsonResponse, responseClass);
+            return objectMapper.readValue(cleanedResponse, responseClass);
         } catch (Exception e) {
-            logger.error("Failed to parse JSON response into {}: {}", responseClass.getSimpleName(), e.getMessage());
-            throw new RuntimeException("JSON parsing failed", e);
+            logger.warn("JSON schema validation failed, attempting repair. Error: {}", e.getMessage());
+            String repairedResponse = com.aicoursegenerator.ai.util.JsonRepairUtil.repair(jsonResponse);
+            try {
+                return objectMapper.readValue(repairedResponse, responseClass);
+            } catch (Exception ex) {
+                logger.error("Failed to parse JSON response even after repair into {}: {}", responseClass.getSimpleName(), ex.getMessage());
+                throw new com.aicoursegenerator.ai.exception.AIResponseParsingException("JSON parsing failed", ex);
+            }
         }
     }
 
     private String executeWithRetry(String systemPrompt, String userPrompt, boolean requireJson) {
-        int maxRetries = FALLBACK_MODELS.length;
+        int maxRetries = 3;
         int delayMs = 1500;
 
         for (int attempt = 0; attempt < maxRetries; attempt++) {
-            String currentModel = FALLBACK_MODELS[attempt];
             try {
                 String prompt = userPrompt;
                 if (requireJson && attempt > 0) {
                     prompt += "\n\nIMPORTANT: You must return ONLY a valid JSON object matching the requested schema. Do not enclose it in markdown blocks. Output raw JSON only.";
                 }
                 
-                return callOpenRouterApi(systemPrompt, prompt, currentModel);
+                return callApi(systemPrompt, prompt, attempt + 1);
                 
             } catch (Exception e) {
                 boolean isRetryable = isRetryableError(e);
-                logger.error("Attempt {} failed with model {}: {}", attempt + 1, currentModel, e.getMessage());
+                logger.error("Attempt {} failed: {}", attempt + 1, e.getMessage());
                 
                 if (attempt == maxRetries - 1 || !isRetryable) {
-                    logger.error("Exhausted all fallback models or non-retryable error. Propagating failure.");
+                    logger.error("Exhausted all retries or non-retryable error. Propagating failure.");
                     throw new RuntimeException(e.getMessage(), e);
                 }
                 
                 try {
-                    logger.info("Falling back to next model. Waiting {}ms...", delayMs);
+                    logger.info("Retrying API call. Waiting {}ms...", delayMs);
                     Thread.sleep(delayMs);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
-                    throw new RuntimeException("Thread interrupted during fallback", ie);
+                    throw new RuntimeException("Thread interrupted during retry", ie);
                 }
             }
         }
-        throw new RuntimeException("OpenRouter API failed across all fallback models");
+        throw new RuntimeException("AI API failed across all retries");
     }
 
     private boolean isRetryableError(Exception e) {
         String msg = e.getMessage();
         if (msg == null) return true;
-        // Check for common retryable conditions
         return e instanceof HttpTimeoutException ||
                msg.contains("timeout") ||
                msg.contains("status 429") ||
@@ -117,7 +116,6 @@ public class OpenRouterProvider implements AiProvider {
                msg.contains("status 502") ||
                msg.contains("status 503") ||
                msg.contains("status 504") ||
-               msg.contains("status 404") ||
                msg.contains("model unavailable");
     }
 
@@ -168,9 +166,9 @@ public class OpenRouterProvider implements AiProvider {
         return response.trim();
     }
 
-    private String callOpenRouterApi(String systemPrompt, String userPrompt, String currentModel) throws Exception {
+    private String callApi(String systemPrompt, String userPrompt, int attemptCount) throws Exception {
         Map<String, Object> requestBody = Map.of(
-                "model", currentModel,
+                "model", this.model,
                 "messages", List.of(
                         Map.of("role", "system", "content", systemPrompt),
                         Map.of("role", "user", "content", userPrompt)
@@ -180,24 +178,24 @@ public class OpenRouterProvider implements AiProvider {
         String jsonBody = objectMapper.writeValueAsString(requestBody);
         
         logger.info("--- AI Request ---");
-        logger.info("Provider: OpenRouter");
-        logger.info("Model: {}", currentModel);
-        logger.info("Endpoint: {}", this.baseUrl);
-        logger.info("Prompt length: {}", jsonBody.length());
+        logger.info("Provider: OmniRoute");
+        logger.info("Combo: {}", this.model);
+        logger.info("Base URL: {}", this.baseUrl);
+        logger.info("Request Length: {} chars", jsonBody.length());
         
         long startTime = System.currentTimeMillis();
         
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(baseUrl))
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/chat/completions"))
                 .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + apiKey)
-                .header("HTTP-Referer", "http://localhost:3000") // Required by OpenRouter
-                .header("X-Title", "AI Course Generator") // Optional but good for OpenRouter
-                .timeout(Duration.ofSeconds(90)) // Added 90s timeout explicitly
-                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-                .build();
-        
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                .timeout(Duration.ofSeconds(90))
+                .POST(HttpRequest.BodyPublishers.ofString(jsonBody));
+                
+        if (this.apiKey != null && !this.apiKey.trim().isEmpty()) {
+            requestBuilder.header("Authorization", "Bearer " + apiKey);
+        }
+
+        HttpResponse<String> response = httpClient.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString());
         long duration = System.currentTimeMillis() - startTime;
         
         logger.info("--- AI Response ---");
@@ -205,24 +203,28 @@ public class OpenRouterProvider implements AiProvider {
         logger.info("Response Time: {} ms", duration);
 
         if (response.statusCode() != 200) {
-            logger.error("OpenRouter Error Response Body: {}", response.body());
-            throw new RuntimeException("OpenRouter returned status " + response.statusCode() + ": " + response.body());
+            logger.error("API Error Response Body: {}", response.body());
+            throw new RuntimeException("API returned status " + response.statusCode() + ": " + response.body());
         }
         
-        logger.debug("Raw OpenRouter Response: {}", response.body());
+        logger.debug("Raw Response: {}", response.body());
         JsonNode rootNode = objectMapper.readTree(response.body());
         
         if (rootNode.has("error")) {
             String errorMsg = rootNode.path("error").path("message").asText("Unknown AI Error");
-            logger.error("OpenRouter API Error: {}", errorMsg);
-            throw new com.aicoursegenerator.ai.exception.AIResponseParsingException("OpenRouter API Error: " + errorMsg);
+            logger.error("API Error: {}", errorMsg);
+            throw new com.aicoursegenerator.ai.exception.AIResponseParsingException("API Error: " + errorMsg);
         }
 
         if (!rootNode.has("choices") || !rootNode.get("choices").isArray() || rootNode.get("choices").size() == 0) {
-            throw new com.aicoursegenerator.ai.exception.AIResponseParsingException("Malformed OpenRouter Response: Missing or empty 'choices' array");
+            throw new com.aicoursegenerator.ai.exception.AIResponseParsingException("Malformed Response: Missing or empty 'choices' array");
         }
         
-        // Try to log token usage
+        // Log actually resolved model from OmniRoute and token usage
+        if (rootNode.has("model")) {
+            logger.info("Model actually resolved: {}", rootNode.path("model").asText());
+        }
+        
         if (rootNode.has("usage")) {
             JsonNode usage = rootNode.get("usage");
             logger.info("Token Usage - Prompt: {}, Completion: {}, Total: {}", 
@@ -234,9 +236,11 @@ public class OpenRouterProvider implements AiProvider {
             logger.info("Token Usage: Not provided by API");
         }
         
+        logger.info("Retry Count: {}", attemptCount - 1);
+        
         JsonNode firstChoice = rootNode.get("choices").get(0);
         if (firstChoice == null || firstChoice.isMissingNode() || firstChoice.isNull()) {
-            throw new com.aicoursegenerator.ai.exception.AIResponseParsingException("Malformed OpenRouter Response: First choice is null");
+            throw new com.aicoursegenerator.ai.exception.AIResponseParsingException("Malformed Response: First choice is null");
         }
         
         return firstChoice.path("message").path("content").asText();
@@ -244,20 +248,20 @@ public class OpenRouterProvider implements AiProvider {
 
     @Override
     public void streamText(String systemPrompt, String userPrompt, SseEmitter emitter, Consumer<String> onComplete) {
-        streamTextWithFallback(systemPrompt, userPrompt, emitter, onComplete, 0);
+        streamTextWithRetry(systemPrompt, userPrompt, emitter, onComplete, 0);
     }
 
-    private void streamTextWithFallback(String systemPrompt, String userPrompt, SseEmitter emitter, Consumer<String> onComplete, int attemptIndex) {
-        if (attemptIndex >= FALLBACK_MODELS.length) {
-            emitter.completeWithError(new RuntimeException("All fallback models failed for streaming"));
+    private void streamTextWithRetry(String systemPrompt, String userPrompt, SseEmitter emitter, Consumer<String> onComplete, int attemptIndex) {
+        int maxRetries = 3;
+        if (attemptIndex >= maxRetries) {
+            emitter.completeWithError(new RuntimeException("API Streaming failed after " + maxRetries + " attempts"));
             return;
         }
-        String currentModel = FALLBACK_MODELS[attemptIndex];
         
         new Thread(() -> {
             try {
                 Map<String, Object> requestBody = Map.of(
-                        "model", currentModel,
+                        "model", this.model,
                         "messages", List.of(
                                 Map.of("role", "system", "content", systemPrompt),
                                 Map.of("role", "user", "content", userPrompt)
@@ -268,23 +272,22 @@ public class OpenRouterProvider implements AiProvider {
                 String jsonBody = objectMapper.writeValueAsString(requestBody);
 
                 logger.info("--- AI Streaming Request ---");
-                logger.info("Provider: OpenRouter");
-                logger.info("Model: {}", currentModel);
+                logger.info("Provider: OmniRoute");
+                logger.info("Combo: {}", this.model);
                 logger.info("Endpoint: {}", this.baseUrl);
-                logger.info("Prompt length: {}", jsonBody.length());
                 
                 long startTime = System.currentTimeMillis();
 
-                HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(baseUrl))
+                HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                        .uri(URI.create(baseUrl + "/chat/completions"))
                         .header("Content-Type", "application/json")
-                        .header("Authorization", "Bearer " + apiKey)
-                        .header("HTTP-Referer", "http://localhost:3000")
-                        .header("X-Title", "AI Course Generator")
-                        .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-                        .build();
+                        .POST(HttpRequest.BodyPublishers.ofString(jsonBody));
+                        
+                if (this.apiKey != null && !this.apiKey.trim().isEmpty()) {
+                    requestBuilder.header("Authorization", "Bearer " + apiKey);
+                }
 
-                HttpResponse<Stream<String>> response = httpClient.send(request, HttpResponse.BodyHandlers.ofLines());
+                HttpResponse<Stream<String>> response = httpClient.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofLines());
                 long duration = System.currentTimeMillis() - startTime;
 
                 logger.info("--- AI Streaming Connect ---");
@@ -292,7 +295,7 @@ public class OpenRouterProvider implements AiProvider {
                 logger.info("Connection Time: {} ms", duration);
 
                 if (response.statusCode() != 200) {
-                    emitter.send(SseEmitter.event().data("Error: OpenRouter returned status " + response.statusCode()));
+                    emitter.send(SseEmitter.event().data("Error: API returned status " + response.statusCode()));
                     emitter.complete();
                     return;
                 }
@@ -307,8 +310,8 @@ public class OpenRouterProvider implements AiProvider {
                             
                             if (rootNode.has("error")) {
                                 String errorMsg = rootNode.path("error").path("message").asText("Unknown AI Error");
-                                logger.error("OpenRouter API Error in stream: {}", errorMsg);
-                                throw new com.aicoursegenerator.ai.exception.AIResponseParsingException("OpenRouter API Error in stream: " + errorMsg);
+                                logger.error("API Error in stream: {}", errorMsg);
+                                throw new com.aicoursegenerator.ai.exception.AIResponseParsingException("API Error in stream: " + errorMsg);
                             }
                             
                             JsonNode choices = rootNode.path("choices");
@@ -337,10 +340,10 @@ public class OpenRouterProvider implements AiProvider {
                 }
                 emitter.complete();
             } catch (Exception e) {
-                logger.error("Streaming failed for model {}: {}", currentModel, e.getMessage());
+                logger.error("Streaming failed on attempt {}: {}", attemptIndex + 1, e.getMessage());
                 if (isRetryableError(e)) {
-                    logger.info("Attempting fallback for streaming...");
-                    streamTextWithFallback(systemPrompt, userPrompt, emitter, onComplete, attemptIndex + 1);
+                    logger.info("Attempting retry for streaming...");
+                    streamTextWithRetry(systemPrompt, userPrompt, emitter, onComplete, attemptIndex + 1);
                 } else {
                     logger.error("Non-retryable streaming error.", e);
                     emitter.completeWithError(e);

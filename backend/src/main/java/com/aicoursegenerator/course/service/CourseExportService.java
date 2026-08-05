@@ -7,8 +7,17 @@ import com.aicoursegenerator.course.entity.Lesson;
 import com.aicoursegenerator.course.repository.ChapterRepository;
 import com.aicoursegenerator.course.repository.CourseRepository;
 import com.aicoursegenerator.course.repository.LessonRepository;
+import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 import com.aicoursegenerator.user.entity.User;
+import org.commonmark.node.Node;
+import org.commonmark.parser.Parser;
+import org.commonmark.renderer.html.HtmlRenderer;
 import org.springframework.stereotype.Service;
+
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import java.util.List;
 import java.util.UUID;
@@ -184,26 +193,67 @@ public class CourseExportService {
         return sb.toString();
     }
 
+    public byte[] exportPdf(UUID courseId, User user) {
+        String htmlContent = exportHtml(courseId, user);
+        // openhtmltopdf requires fully well-formed XML/XHTML.
+        // We ensure simple closing tags in our HTML strings, but let's replace <meta charset="utf-8"> with <meta charset="utf-8"/>
+        htmlContent = htmlContent.replace("<meta charset=\"utf-8\">", "<meta charset=\"utf-8\"/>");
+
+        try (ByteArrayOutputStream os = new ByteArrayOutputStream()) {
+            PdfRendererBuilder builder = new PdfRendererBuilder();
+            builder.useFastMode();
+            builder.withHtmlContent(htmlContent, null);
+            builder.toStream(os);
+            builder.run();
+            return os.toByteArray();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to generate PDF", e);
+        }
+    }
+
+    public byte[] exportZip(UUID courseId, User user) {
+        Course course = courseRepository.findByIdAndUser(courseId, user)
+                .orElseThrow(() -> new ResourceNotFoundException("Course not found"));
+
+        String md = exportMarkdown(courseId, user);
+        String html = exportHtml(courseId, user);
+        byte[] pdf = exportPdf(courseId, user);
+        
+        String safeTitle = course.getTitle().replaceAll("[^a-zA-Z0-9.-]", "_");
+
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
+             ZipOutputStream zos = new ZipOutputStream(baos)) {
+            
+            // Add Markdown
+            ZipEntry mdEntry = new ZipEntry(safeTitle + ".md");
+            zos.putNextEntry(mdEntry);
+            zos.write(md.getBytes(StandardCharsets.UTF_8));
+            zos.closeEntry();
+            
+            // Add HTML
+            ZipEntry htmlEntry = new ZipEntry(safeTitle + ".html");
+            zos.putNextEntry(htmlEntry);
+            zos.write(html.getBytes(StandardCharsets.UTF_8));
+            zos.closeEntry();
+            
+            // Add PDF
+            ZipEntry pdfEntry = new ZipEntry(safeTitle + ".pdf");
+            zos.putNextEntry(pdfEntry);
+            zos.write(pdf);
+            zos.closeEntry();
+            
+            zos.finish();
+            return baos.toByteArray();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to generate ZIP", e);
+        }
+    }
+
     private String formatMarkdownToHtml(String md) {
         if (md == null) return "";
-        // Simple markdown line-break and header rendering for clean export styling
-        String html = md
-            .replace("\r\n", "\n")
-            .replaceAll("(?m)^### (.*)$", "<h3>$1</h3>")
-            .replaceAll("(?m)^#### (.*)$", "<h4>$1</h4>")
-            .replaceAll("(?m)^## (.*)$", "<h2>$1</h2>")
-            .replaceAll("(?m)^# (.*)$", "<h1>$1</h1>")
-            .replaceAll("(?m)^\\* (.*)$", "<li>$1</li>")
-            .replaceAll("(?m)^- (.*)$", "<li>$1</li>");
-            
-        // Wrap adjacent li elements in ul
-        html = html.replaceAll("(<li>.*</li>)", "<ul>$1</ul>");
-        // Clean double wrapped uls
-        html = html.replaceAll("</ul>\\s*<ul>", "");
-        
-        // Render simple block code snippets
-        html = html.replaceAll("```([a-zA-Z]*)\\n([\\s\\S]*?)```", "<pre><code>$2</code></pre>");
-        
-        return html;
+        Parser parser = Parser.builder().build();
+        Node document = parser.parse(md);
+        HtmlRenderer renderer = HtmlRenderer.builder().build();
+        return renderer.render(document);
     }
 }

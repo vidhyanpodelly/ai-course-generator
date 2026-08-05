@@ -131,33 +131,41 @@ public class CourseGenerationService {
 
             // Populate course structures
             logger.info("Stage: Outline Creation - mapping outline to course fields. Title: {}", outline.title());
-            course.setTitle(outline.title());
-            course.setDescription(outline.description());
-            course.setEstimatedDuration(outline.estimatedDuration());
-            course.setDifficultyLevel(outline.difficultyLevel());
-            course.setPrerequisites(outline.prerequisites());
-            course.setLearningObjectives(outline.learningObjectives());
+            course.setTitle(outline.title() != null ? outline.title() : "Untitled Course");
+            course.setDescription(outline.description() != null ? outline.description() : "");
+            course.setEstimatedDuration(outline.estimatedDuration() != null ? outline.estimatedDuration() : "Unknown");
+            course.setDifficultyLevel(outline.difficultyLevel() != null ? outline.difficultyLevel() : "Intermediate");
+            course.setPrerequisites(outline.prerequisites() != null ? outline.prerequisites() : List.of());
+            course.setLearningObjectives(outline.learningObjectives() != null ? outline.learningObjectives() : List.of());
             course.setStatus("READY");
             course.setUpdatedAt(ZonedDateTime.now());
 
             Course updatedCourse = courseRepository.save(course);
 
             // Create chapters and lessons
-            logger.info("Stage: Course Persistence - saving chapters and lessons. Total chapters: {}", outline.chapters().size());
-            for (CourseOutlineResponse.ChapterOutline chOutline : outline.chapters()) {
+            List<CourseOutlineResponse.ChapterOutline> chapters = outline.chapters() != null ? outline.chapters() : List.of();
+            if (chapters.isEmpty()) {
+                throw new com.aicoursegenerator.ai.exception.AIResponseParsingException("Malformed Outline Response: Missing chapters");
+            }
+            logger.info("Stage: Course Persistence - saving chapters and lessons. Total chapters: {}", chapters.size());
+            for (CourseOutlineResponse.ChapterOutline chOutline : chapters) {
                 Chapter chapter = new Chapter();
                 chapter.setCourse(updatedCourse);
-                chapter.setTitle(chOutline.title());
-                chapter.setSummary(chOutline.summary());
+                chapter.setTitle(chOutline.title() != null ? chOutline.title() : "Untitled Chapter");
+                chapter.setSummary(chOutline.summary() != null ? chOutline.summary() : "");
                 chapter.setSequenceNumber(chOutline.sequenceNumber());
                 
                 // Chapter quiz will be populated dynamically or on quiz generation request
                 Chapter savedChapter = chapterRepository.save(chapter);
 
-                for (CourseOutlineResponse.LessonOutline lesOutline : chOutline.lessons()) {
+                List<CourseOutlineResponse.LessonOutline> lessons = chOutline.lessons() != null ? chOutline.lessons() : List.of();
+                if (lessons.isEmpty()) {
+                    throw new com.aicoursegenerator.ai.exception.AIResponseParsingException("Malformed Outline Response: Missing lessons in chapter " + chapter.getTitle());
+                }
+                for (CourseOutlineResponse.LessonOutline lesOutline : lessons) {
                     Lesson lesson = new Lesson();
                     lesson.setChapter(savedChapter);
-                    lesson.setTitle(lesOutline.title());
+                    lesson.setTitle(lesOutline.title() != null ? lesOutline.title() : "Untitled Lesson");
                     lesson.setSequenceNumber(lesOutline.sequenceNumber());
                     lessonRepository.save(lesson);
                 }

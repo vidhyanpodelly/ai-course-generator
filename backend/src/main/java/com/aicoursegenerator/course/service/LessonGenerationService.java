@@ -93,11 +93,15 @@ public class LessonGenerationService {
                     LessonExplanationResponse.class
             );
 
+            if (response == null || response.explanation() == null || response.explanation().trim().isEmpty()) {
+                throw new com.aicoursegenerator.ai.exception.AIResponseParsingException("Malformed Lesson Response: Missing explanation");
+            }
+
             // Cache generated fields
             lesson.setExplanation(response.explanation());
-            lesson.setKeyTakeaways(response.keyTakeaways());
-            lesson.setImportantNotes(response.importantNotes());
-            lesson.setRealWorldExamples(response.realWorldExamples());
+            lesson.setKeyTakeaways(response.keyTakeaways() != null ? response.keyTakeaways() : List.of());
+            lesson.setImportantNotes(response.importantNotes() != null ? response.importantNotes() : List.of());
+            lesson.setRealWorldExamples(response.realWorldExamples() != null ? response.realWorldExamples() : List.of());
 
             return lessonRepository.save(lesson);
 

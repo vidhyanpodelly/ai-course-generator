@@ -239,14 +239,28 @@ function CourseOutlineContent({ courseId }: { courseId: string }) {
                   className="flex-1 flex items-center justify-center space-x-1.5 px-3 py-2 bg-gray-900 hover:bg-gray-850 border border-gray-850 rounded-xl text-[10px] font-bold text-gray-400 hover:text-white transition"
                 >
                   <Download className="h-3.5 w-3.5" />
-                  <span>Export Markdown</span>
+                  <span>Markdown</span>
                 </a>
                 <a
                   href={`/api/courses/${courseId}/export?format=HTML`}
                   className="flex-1 flex items-center justify-center space-x-1.5 px-3 py-2 bg-gray-900 hover:bg-gray-850 border border-gray-850 rounded-xl text-[10px] font-bold text-gray-400 hover:text-white transition"
                 >
                   <Download className="h-3.5 w-3.5" />
-                  <span>Export HTML</span>
+                  <span>HTML</span>
+                </a>
+                <a
+                  href={`/api/courses/${courseId}/export?format=PDF`}
+                  className="flex-1 flex items-center justify-center space-x-1.5 px-3 py-2 bg-gray-900 hover:bg-gray-850 border border-gray-850 rounded-xl text-[10px] font-bold text-gray-400 hover:text-white transition"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>PDF</span>
+                </a>
+                <a
+                  href={`/api/courses/${courseId}/export?format=ZIP`}
+                  className="flex-1 flex items-center justify-center space-x-1.5 px-3 py-2 bg-gray-900 hover:bg-gray-850 border border-gray-850 rounded-xl text-[10px] font-bold text-gray-400 hover:text-white transition"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>ZIP</span>
                 </a>
               </div>
             </div>
