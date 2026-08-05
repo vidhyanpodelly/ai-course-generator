@@ -173,6 +173,15 @@ public class CourseGenerationService {
 
             logger.info("Stage: Course Persistence - complete. Course ID: {}", courseId);
 
+        } catch (com.aicoursegenerator.ai.exception.AIResponseParsingException e) {
+            logger.error("Stage: Course Generation - failed parsing AI response for Course ID: {}. Raw Response: {}", courseId, e.getRawResponse(), e);
+            String failureMessage = "JSON parsing failed";
+            try {
+                self.persistFailure(courseId, failureMessage);
+            } catch (Exception persistEx) {
+                logger.error("Failed to persist failure status for Course ID: {}", courseId, persistEx);
+            }
+            throw e;
         } catch (Exception e) {
             logger.error("Stage: Course Generation - failed. Course ID: {}", courseId, e);
             String failureMessage = determineFailureReason(e);

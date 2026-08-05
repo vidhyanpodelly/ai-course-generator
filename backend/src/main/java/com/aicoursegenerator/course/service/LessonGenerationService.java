@@ -105,6 +105,14 @@ public class LessonGenerationService {
 
             return lessonRepository.save(lesson);
 
+        } catch (com.aicoursegenerator.ai.exception.AIResponseParsingException e) {
+            logger.error("Failed to parse AI response for Lesson ID: {}. Raw Response: {}", lessonId, e.getRawResponse(), e);
+            lesson.setExplanation("### ⚠️ AI Parsing Failed\nThe AI responded but we could not parse it. Raw response:\n```json\n" + e.getRawResponse() + "\n```");
+            lesson.setKeyTakeaways(List.of("Parsing failed."));
+            lesson.setImportantNotes(List.of("Raw output logged."));
+            lesson.setRealWorldExamples(List.of());
+            
+            return lessonRepository.save(lesson);
         } catch (Exception e) {
             logger.error("Failed to generate content for Lesson ID: {}", lessonId, e);
             lesson.setExplanation("### ⚠️ AI Generation Failed\nWe encountered an error while generating this lesson's content. Please try again later or check your API quotas.\n\n**Details:** " + e.getMessage());

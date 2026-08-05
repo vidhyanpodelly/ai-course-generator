@@ -67,7 +67,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiResponse<Object>> handleGeneralException(Exception ex) {
+    public ResponseEntity<ApiResponse<Object>> handleGeneralException(Exception ex, org.springframework.web.context.request.WebRequest request) {
         // BUG 4 FIX: Always log the FULL stack trace with root cause, class, file, and line number.
         // Never swallow exceptions silently.
         Throwable rootCause = ex;
@@ -80,8 +80,11 @@ public class GlobalExceptionHandler {
                 ? stackTrace[0].getFileName() + ":" + stackTrace[0].getLineNumber()
                 : "unknown location";
 
+        String requestPath = request.getDescription(false);
+
         logger.error(
-            "Unhandled exception - Type: {}, RootCause: {}, At: {}",
+            "Unhandled exception - Path: {}, Type: {}, RootCause: {}, At: {}",
+            requestPath,
             ex.getClass().getName(),
             rootCause.getMessage(),
             location,
@@ -90,11 +93,12 @@ public class GlobalExceptionHandler {
 
         // Return detailed error message so the API consumer can see the real failure
         String detailedMessage = String.format(
-            "[%s] %s (Root cause: %s at %s)",
+            "[%s] %s (Root cause: %s at %s) [Path: %s]",
             ex.getClass().getSimpleName(),
             ex.getMessage() != null ? ex.getMessage() : "no message",
             rootCause.getMessage() != null ? rootCause.getMessage() : "no root cause message",
-            location
+            location,
+            requestPath
         );
 
         return ResponseEntity

@@ -41,6 +41,7 @@ public class OpenAICompatibleProvider implements AiProvider {
         this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
         this.objectMapper = objectMapper;
         this.httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofSeconds(20))
                 .build();
                 
@@ -67,7 +68,8 @@ public class OpenAICompatibleProvider implements AiProvider {
                 return objectMapper.readValue(repairedResponse, responseClass);
             } catch (Exception ex) {
                 logger.error("Failed to parse JSON response even after repair into {}: {}", responseClass.getSimpleName(), ex.getMessage());
-                throw new com.aicoursegenerator.ai.exception.AIResponseParsingException("JSON parsing failed", ex);
+                logger.error("Raw response that failed parsing: {}", jsonResponse);
+                throw new com.aicoursegenerator.ai.exception.AIResponseParsingException("JSON parsing failed", ex, jsonResponse);
             }
         }
     }
@@ -169,6 +171,7 @@ public class OpenAICompatibleProvider implements AiProvider {
     private String callApi(String systemPrompt, String userPrompt, int attemptCount) throws Exception {
         Map<String, Object> requestBody = Map.of(
                 "model", this.model,
+                "stream", false,
                 "messages", List.of(
                         Map.of("role", "system", "content", systemPrompt),
                         Map.of("role", "user", "content", userPrompt)
@@ -181,7 +184,8 @@ public class OpenAICompatibleProvider implements AiProvider {
         logger.info("Provider: OmniRoute");
         logger.info("Combo: {}", this.model);
         logger.info("Base URL: {}", this.baseUrl);
-        logger.info("Request Length: {} chars", jsonBody.length());
+        logger.info("Endpoint: /chat/completions");
+        logger.info("Request Body: {}", jsonBody);
         
         long startTime = System.currentTimeMillis();
         
@@ -201,13 +205,14 @@ public class OpenAICompatibleProvider implements AiProvider {
         logger.info("--- AI Response ---");
         logger.info("HTTP Status: {}", response.statusCode());
         logger.info("Response Time: {} ms", duration);
+        logger.info("Headers: {}", response.headers().map());
+        logger.info("Raw Response Body: {}", response.body());
 
         if (response.statusCode() != 200) {
             logger.error("API Error Response Body: {}", response.body());
             throw new RuntimeException("API returned status " + response.statusCode() + ": " + response.body());
         }
         
-        logger.debug("Raw Response: {}", response.body());
         JsonNode rootNode = objectMapper.readTree(response.body());
         
         if (rootNode.has("error")) {
@@ -236,14 +241,22 @@ public class OpenAICompatibleProvider implements AiProvider {
             logger.info("Token Usage: Not provided by API");
         }
         
-        logger.info("Retry Count: {}", attemptCount - 1);
-        
-        JsonNode firstChoice = rootNode.get("choices").get(0);
-        if (firstChoice == null || firstChoice.isMissingNode() || firstChoice.isNull()) {
-            throw new com.aicoursegenerator.ai.exception.AIResponseParsingException("Malformed Response: First choice is null");
+        JsonNode firstChoice = rootNode.path("choices").path(0);
+        if (firstChoice.isMissingNode() || firstChoice.isNull()) {
+            throw new com.aicoursegenerator.ai.exception.AIResponseParsingException("Malformed Response: First choice is null or missing");
         }
         
-        return firstChoice.path("message").path("content").asText();
+        JsonNode messageNode = firstChoice.path("message");
+        if (messageNode.isMissingNode() || messageNode.isNull()) {
+            throw new com.aicoursegenerator.ai.exception.AIResponseParsingException("Malformed Response: message node is missing");
+        }
+        
+        JsonNode contentNode = messageNode.path("content");
+        if (contentNode.isMissingNode() || contentNode.isNull()) {
+            throw new com.aicoursegenerator.ai.exception.AIResponseParsingException("Malformed Response: content node is missing");
+        }
+        
+        return contentNode.asText();
     }
 
     @Override
