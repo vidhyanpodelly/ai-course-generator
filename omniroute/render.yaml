@@ -12,7 +12,4 @@ services:
         sync: false
       - key: GROQ_API_KEY
         sync: false
-    disk:
-      name: omniroute-data
-      mountPath: /app/data
-      sizeGB: 1
+
