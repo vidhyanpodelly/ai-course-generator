@@ -105,7 +105,6 @@ Curricula.AI is a production-quality, Full Stack AI-powered educational applicat
    - OmniRoute specific keys (configured in OmniRoute's `render.yaml` or `.env`):
      - `GEMINI_API_KEY` (Required for Gemini fallback)
      - `GROQ_API_KEY` (Required for fast OSS models)
-     - `OPENAI_API_KEY` (Optional)
 
 ### OmniRoute Docker Deployment (Render)
 To completely decouple the AI Gateway from the backend, OmniRoute is deployed as a standalone Docker container.
