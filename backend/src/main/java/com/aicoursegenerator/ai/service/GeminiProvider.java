@@ -119,8 +119,8 @@ public class GeminiProvider implements AiProvider {
                     logUsage(root);
                     logger.info("Gemini request successful. Status: {}, Duration: {}ms", response.statusCode(), duration);
                     return extractText(root);
-                } else if (response.statusCode() == 429) {
-                    logger.warn("Rate limited by Gemini. Retrying... (Attempt {}/{})", attempt, this.maxRetries);
+                } else if (response.statusCode() == 429 || response.statusCode() == 503 || response.statusCode() == 500) {
+                    logger.warn("Transient error from Gemini (Status: {}). Retrying... (Attempt {}/{})", response.statusCode(), attempt, this.maxRetries);
                     Thread.sleep((long) Math.pow(2, attempt) * 1000); // Exponential backoff
                 } else {
                     logger.error("Gemini request failed. Status: {}, Body: {}", response.statusCode(), response.body());
