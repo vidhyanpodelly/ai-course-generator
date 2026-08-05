@@ -28,11 +28,25 @@ public class GeminiProvider implements AiProvider {
     private final String apiKey;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
-    private static final String MODEL_NAME = "gemini-1.5-flash";
-    private static final String BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/";
+    private final String modelName;
+    private final String baseUrl;
+    private final Duration timeout;
+    private final int maxRetries;
 
-    public GeminiProvider(@Value("${gemini.api-key:}") String apiKey, ObjectMapper objectMapper) {
+    public GeminiProvider(
+            @Value("${gemini.api-key:}") String apiKey,
+            @Value("${gemini.model:gemini-3.5-flash}") String modelName,
+            @Value("${gemini.base-url:https://generativelanguage.googleapis.com}") String baseUrl,
+            @Value("${gemini.timeout:120s}") Duration timeout,
+            @Value("${gemini.max-retries:3}") int maxRetries,
+            ObjectMapper objectMapper) {
+        
         this.apiKey = apiKey;
+        this.modelName = modelName;
+        this.baseUrl = baseUrl.endsWith("/") ? baseUrl + "v1beta/models/" : baseUrl + "/v1beta/models/";
+        this.timeout = timeout;
+        this.maxRetries = maxRetries;
+        
         this.objectMapper = objectMapper;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
@@ -41,7 +55,7 @@ public class GeminiProvider implements AiProvider {
         if (this.apiKey == null || this.apiKey.trim().isEmpty()) {
             throw new IllegalStateException("GEMINI_API_KEY environment variable is missing.");
         }
-        logger.info("Initialized GeminiProvider with model {}", MODEL_NAME);
+        logger.info("Initialized GeminiProvider with model {}", this.modelName);
     }
 
     @Override
@@ -80,23 +94,22 @@ public class GeminiProvider implements AiProvider {
 
     private String executeRequest(String systemPrompt, String userPrompt, boolean requireJson) {
         long startTime = System.currentTimeMillis();
-        int maxRetries = 3;
         int attempt = 0;
         
-        while (attempt < maxRetries) {
+        while (attempt < this.maxRetries) {
             attempt++;
             try {
                 Map<String, Object> payload = buildPayload(systemPrompt, userPrompt, requireJson);
                 String jsonBody = objectMapper.writeValueAsString(payload);
                 
                 HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(BASE_URL + MODEL_NAME + ":generateContent?key=" + apiKey))
+                        .uri(URI.create(this.baseUrl + this.modelName + ":generateContent?key=" + apiKey))
                         .header("Content-Type", "application/json")
                         .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-                        .timeout(Duration.ofSeconds(90))
+                        .timeout(this.timeout)
                         .build();
 
-                logger.debug("Sending request to Gemini (Attempt {}/{})", attempt, maxRetries);
+                logger.debug("Sending request to Gemini (Attempt {}/{})", attempt, this.maxRetries);
                 
                 HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
                 long duration = System.currentTimeMillis() - startTime;
@@ -107,15 +120,15 @@ public class GeminiProvider implements AiProvider {
                     logger.info("Gemini request successful. Status: {}, Duration: {}ms", response.statusCode(), duration);
                     return extractText(root);
                 } else if (response.statusCode() == 429) {
-                    logger.warn("Rate limited by Gemini. Retrying... (Attempt {}/{})", attempt, maxRetries);
+                    logger.warn("Rate limited by Gemini. Retrying... (Attempt {}/{})", attempt, this.maxRetries);
                     Thread.sleep((long) Math.pow(2, attempt) * 1000); // Exponential backoff
                 } else {
                     logger.error("Gemini request failed. Status: {}, Body: {}", response.statusCode(), response.body());
                     throw new RuntimeException("AI provider failed with status " + response.statusCode());
                 }
             } catch (IOException | InterruptedException e) {
-                logger.error("Error communicating with Gemini (Attempt {}/{}): {}", attempt, maxRetries, e.getMessage());
-                if (attempt == maxRetries || e instanceof InterruptedException) {
+                logger.error("Error communicating with Gemini (Attempt {}/{}): {}", attempt, this.maxRetries, e.getMessage());
+                if (attempt == this.maxRetries || e instanceof InterruptedException) {
                     if (e instanceof InterruptedException) {
                         Thread.currentThread().interrupt();
                     }
@@ -123,7 +136,7 @@ public class GeminiProvider implements AiProvider {
                 }
             }
         }
-        throw new RuntimeException("AI provider failed after " + maxRetries + " attempts");
+        throw new RuntimeException("AI provider failed after " + this.maxRetries + " attempts");
     }
 
     private Map<String, Object> buildPayload(String systemPrompt, String userPrompt, boolean requireJson) {

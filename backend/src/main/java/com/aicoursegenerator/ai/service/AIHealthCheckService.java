@@ -26,7 +26,7 @@ public class AIHealthCheckService {
     private final String apiKey;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
-    private static final String MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models?key=";
+    private final String modelsUrl;
 
     private volatile boolean isAiAvailable = false;
     private volatile String lastFailureReason = "Not checked yet";
@@ -35,9 +35,14 @@ public class AIHealthCheckService {
 
     public AIHealthCheckService(
             @Value("${gemini.api-key:}") String apiKey,
+            @Value("${gemini.base-url:https://generativelanguage.googleapis.com}") String baseUrl,
             ObjectMapper objectMapper) {
         this.apiKey = apiKey;
         this.objectMapper = objectMapper;
+        
+        String base = baseUrl.endsWith("/") ? baseUrl : baseUrl + "/";
+        this.modelsUrl = base + "v1beta/models?key=";
+        
         this.httpClient = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofSeconds(10))
@@ -61,7 +66,7 @@ public class AIHealthCheckService {
 
         try {
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(MODELS_URL + apiKey))
+                    .uri(URI.create(this.modelsUrl + apiKey))
                     .timeout(Duration.ofSeconds(15))
                     .GET()
                     .build();
