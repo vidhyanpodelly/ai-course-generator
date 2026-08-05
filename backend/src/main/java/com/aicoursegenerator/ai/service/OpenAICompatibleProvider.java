@@ -172,6 +172,7 @@ public class OpenAICompatibleProvider implements AiProvider {
         Map<String, Object> requestBody = Map.of(
                 "model", this.model,
                 "stream", false,
+                "max_tokens", 4000,
                 "messages", List.of(
                         Map.of("role", "system", "content", systemPrompt),
                         Map.of("role", "user", "content", userPrompt)

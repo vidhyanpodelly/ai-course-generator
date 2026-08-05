@@ -6,7 +6,8 @@ PDF Text Content:
 {{pdfText}}
 ---
 
-Generate a complete, structured course outline that matches the PDF material. You must output ONLY a valid JSON object matching this schema, without any conversational prefix, suffix, or markdown wrappers.
+Generate a complete, structured course outline that matches the PDF material. If the PDF text is fragmented, unreadable, or contains messy math symbols, do your best to infer the topics and generate a highly comprehensive, massive JSON course outline anyway. 
+DO NOT output short apologies or refusal messages. You must output ONLY a valid JSON object matching this schema, without any conversational prefix, suffix, or markdown wrappers.
 
 JSON Schema:
 {
