@@ -167,12 +167,10 @@ public class OpenRouterProvider implements AiProvider {
         payload.put("messages", messages);
         payload.put("stream", false);
 
-        // OpenRouter specific json mode
-        if (requireJson) {
-            Map<String, Object> responseFormat = new HashMap<>();
-            responseFormat.put("type", "json_object");
-            payload.put("response_format", responseFormat);
-        }
+        // We do not use response_format: json_object because QuizService requires a JSON Array root
+        // and json_object strict mode forces a JSON Object root, causing parsing failures.
+        // The prompts already instruct the AI to output valid JSON.
+
 
         return payload;
     }
