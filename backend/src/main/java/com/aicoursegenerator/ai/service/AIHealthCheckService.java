@@ -34,14 +34,14 @@ public class AIHealthCheckService {
     private volatile List<String> availableModels = new ArrayList<>();
 
     public AIHealthCheckService(
-            @Value("${gemini.api-key:}") String apiKey,
-            @Value("${gemini.base-url:https://generativelanguage.googleapis.com}") String baseUrl,
+            @Value("${nvidia.api-key:}") String apiKey,
+            @Value("${nvidia.base-url:https://integrate.api.nvidia.com/v1}") String baseUrl,
             ObjectMapper objectMapper) {
         this.apiKey = apiKey;
         this.objectMapper = objectMapper;
         
         String base = baseUrl.endsWith("/") ? baseUrl : baseUrl + "/";
-        this.modelsUrl = base + "v1beta/models?key=";
+        this.modelsUrl = base + "models";
         
         this.httpClient = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
@@ -51,22 +51,23 @@ public class AIHealthCheckService {
 
     @EventListener(ApplicationReadyEvent.class)
     public void onStartup() {
-        logger.info("Performing startup AI health check against Google Gemini");
+        logger.info("Performing startup AI health check against NVIDIA");
         checkAIHealth();
     }
 
     @Scheduled(fixedDelay = 300000) // Every 5 minutes
     public void checkAIHealth() {
-        if (apiKey == null || apiKey.trim().isEmpty() || apiKey.equals("${GEMINI_API_KEY}")) {
+        if (apiKey == null || apiKey.trim().isEmpty() || apiKey.equals("${NVIDIA_API_KEY}")) {
             isAiAvailable = false;
-            lastFailureReason = "GEMINI_API_KEY is not configured";
+            lastFailureReason = "NVIDIA_API_KEY is not configured";
             logger.error("Health Check Failed: {}", lastFailureReason);
             return;
         }
 
         try {
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(this.modelsUrl + apiKey))
+                    .uri(URI.create(this.modelsUrl))
+                    .header("Authorization", "Bearer " + this.apiKey)
                     .timeout(Duration.ofSeconds(15))
                     .GET()
                     .build();
@@ -81,7 +82,7 @@ public class AIHealthCheckService {
                 this.isAiAvailable = true;
                 this.lastFailureReason = null;
                 parseModels(response.body());
-                logger.info("AI Health Check Passed (Gemini). Latency: {}ms, Available models: {}", duration, availableModels.size());
+                logger.info("AI Health Check Passed (NVIDIA). Latency: {}ms, Available models: {}", duration, availableModels.size());
             } else {
                 this.isAiAvailable = false;
                 this.lastFailureReason = "HTTP " + response.statusCode() + " - " + response.body();
@@ -98,11 +99,11 @@ public class AIHealthCheckService {
     private void parseModels(String jsonBody) {
         try {
             JsonNode root = objectMapper.readTree(jsonBody);
-            JsonNode modelsNode = root.path("models");
+            JsonNode dataNode = root.path("data");
             List<String> models = new ArrayList<>();
-            if (modelsNode.isArray()) {
-                for (JsonNode modelNode : modelsNode) {
-                    models.add(modelNode.path("name").asText());
+            if (dataNode.isArray()) {
+                for (JsonNode modelNode : dataNode) {
+                    models.add(modelNode.path("id").asText());
                 }
             }
             this.availableModels = models;

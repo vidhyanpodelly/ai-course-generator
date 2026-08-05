@@ -100,8 +100,7 @@ Curricula.AI is a production-quality, Full Stack AI-powered educational applicat
 1. Copy [.env.example](file:///.env.example) to a new file named `.env` in the root workspace.
 2. The following variables MUST be configured:
    - **`DB_URL`**, **`DB_USERNAME`**, **`DB_PASSWORD`**: PostgreSQL connection details.
-   - **`JWT_SECRET`**: Base64 encoded string for securing tokens.
-   - **`GEMINI_API_KEY`**: Your Google Gemini API Key.
+   - **`NVIDIA_API_KEY`**: Your NVIDIA API Key for DeepSeek V4 Pro.
 ### Running Backend Locally
 ```bash
 cd backend
@@ -171,7 +170,7 @@ All API responses are wrapped in a standard JSON structure:
 2. **Library Upload**: Click the dashed upload area to choose any study PDF. The document parsing pipeline chunks text and maps indexes.
 3. **Build Course**: Locate the parsed document inside the "Library" list, click the **Build** button. This spawns the background async outline thread pool.
 4. **Open Syllabus**: The course card switches to ready status. Click **Open** to navigate the course structure and view prerequisites/learning goals.
-5. **Lazy Load Lessons**: Expand a chapter and click **Study** on any lesson. Gemini processes the contextual matches and generates rich markdown details in ~2-4 seconds.
+5. **Lazy Load Lessons**: Expand a chapter and click **Study** on any lesson. NVIDIA DeepSeek V4 Pro processes the contextual matches and generates rich markdown details.
 6. **Chat with AI Tutor**: Type a query in the chatbox (e.g. "What does modularity mean?"). The RAG chatbot performs FTS retrieval on the document chunks and responds.
 7. **Complete Checkpoint**: Click **Mark as Complete** at the bottom of the lesson. The progress bar updates.
 8. **Quiz Time**: Click **Take Chapter Quiz** at the end of the chapter list. Answer the 5 generated questions, submit, and read explanations.
@@ -182,6 +181,6 @@ All API responses are wrapped in a standard JSON structure:
 
 ### AI Connection Failed (503 Service Unavailable)
 If the UI reports "AI connection failed" or you receive a 503 error, verify the following:
-1. **Check Backend Logs**: During Spring Boot startup, the `AIHealthCheckService` attempts to ping the Google Gemini API. Look for `AI Health Check Failed` in the logs.
-2. **Verify GEMINI_API_KEY**: Ensure the `GEMINI_API_KEY` environment variable is set correctly in your backend environment.
+1. **Check Backend Logs**: During Spring Boot startup, the `AIHealthCheckService` attempts to ping the NVIDIA API. Look for `AI Health Check Failed` in the logs.
+2. **Verify NVIDIA_API_KEY**: Ensure the `NVIDIA_API_KEY` environment variable is set correctly in your backend environment.
 3. **Test Health Endpoint**: Manually navigate to `https://your-backend.onrender.com/api/health/ai` in your browser. It will return `{"status": "UP"}` if the AI is successfully connected, or `{"status": "DOWN", "reason": "..."}` detailing why it failed.

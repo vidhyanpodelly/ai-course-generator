@@ -22,9 +22,9 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 @Service
-public class GeminiProvider implements AiProvider {
+public class NvidiaProvider implements AiProvider {
 
-    private static final Logger logger = LoggerFactory.getLogger(GeminiProvider.class);
+    private static final Logger logger = LoggerFactory.getLogger(NvidiaProvider.class);
     private final String apiKey;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -33,29 +33,29 @@ public class GeminiProvider implements AiProvider {
     private final Duration timeout;
     private final int maxRetries;
 
-    public GeminiProvider(
-            @Value("${gemini.api-key:}") String apiKey,
-            @Value("${gemini.model:gemini-3.5-flash}") String modelName,
-            @Value("${gemini.base-url:https://generativelanguage.googleapis.com}") String baseUrl,
-            @Value("${gemini.timeout:120s}") Duration timeout,
-            @Value("${gemini.max-retries:3}") int maxRetries,
+    public NvidiaProvider(
+            @Value("${nvidia.api-key:}") String apiKey,
+            @Value("${nvidia.model:deepseek-ai/deepseek-v4-pro}") String modelName,
+            @Value("${nvidia.base-url:https://integrate.api.nvidia.com/v1}") String baseUrl,
+            @Value("${nvidia.timeout:120s}") Duration timeout,
+            @Value("${nvidia.max-retries:3}") int maxRetries,
             ObjectMapper objectMapper) {
-        
+
         this.apiKey = apiKey;
         this.modelName = modelName;
-        this.baseUrl = baseUrl.endsWith("/") ? baseUrl + "v1beta/models/" : baseUrl + "/v1beta/models/";
+        this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
         this.timeout = timeout;
         this.maxRetries = maxRetries;
-        
+
         this.objectMapper = objectMapper;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
-        
+
         if (this.apiKey == null || this.apiKey.trim().isEmpty()) {
-            throw new IllegalStateException("GEMINI_API_KEY environment variable is missing.");
+            throw new IllegalStateException("NVIDIA_API_KEY environment variable is missing.");
         }
-        logger.info("Initialized GeminiProvider with model {}", this.modelName);
+        logger.info("Initialized NvidiaProvider with model {}", this.modelName);
     }
 
     @Override
@@ -66,8 +66,8 @@ public class GeminiProvider implements AiProvider {
     @Override
     public <T> T generateStructuredJson(String systemPrompt, String userPrompt, Class<T> responseClass) {
         String jsonResponse = executeRequest(systemPrompt, userPrompt, true);
-        
-        // Clean markdown blocks if Gemini happened to include them despite the mime-type
+
+        // Clean markdown blocks if the model happened to include them despite the mime-type
         jsonResponse = jsonResponse.trim();
         if (jsonResponse.startsWith("```json")) {
             jsonResponse = jsonResponse.substring(7);
@@ -89,45 +89,49 @@ public class GeminiProvider implements AiProvider {
 
     @Override
     public void streamText(String systemPrompt, String userPrompt, SseEmitter emitter, Consumer<String> onComplete) {
-        throw new UnsupportedOperationException("Streaming is not yet implemented for direct Gemini.");
+        throw new UnsupportedOperationException("Streaming is not yet implemented for direct Nvidia.");
     }
 
     private String executeRequest(String systemPrompt, String userPrompt, boolean requireJson) {
         long startTime = System.currentTimeMillis();
         int attempt = 0;
-        
+
         while (attempt < this.maxRetries) {
             attempt++;
             try {
                 Map<String, Object> payload = buildPayload(systemPrompt, userPrompt, requireJson);
                 String jsonBody = objectMapper.writeValueAsString(payload);
-                
+
                 HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(this.baseUrl + this.modelName + ":generateContent?key=" + apiKey))
+                        .uri(URI.create(this.baseUrl + "/chat/completions"))
                         .header("Content-Type", "application/json")
+                        .header("Authorization", "Bearer " + this.apiKey)
                         .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                         .timeout(this.timeout)
                         .build();
 
-                logger.debug("Sending request to Gemini (Attempt {}/{})", attempt, this.maxRetries);
-                
+                logger.debug("Sending request to Nvidia (Attempt {}/{})", attempt, this.maxRetries);
+
                 HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
                 long duration = System.currentTimeMillis() - startTime;
-                
+
                 if (response.statusCode() >= 200 && response.statusCode() < 300) {
                     JsonNode root = objectMapper.readTree(response.body());
                     logUsage(root);
-                    logger.info("Gemini request successful. Status: {}, Duration: {}ms", response.statusCode(), duration);
+                    logger.info("Nvidia request successful. Status: {}, Duration: {}ms", response.statusCode(), duration);
                     return extractText(root);
                 } else if (response.statusCode() == 429 || response.statusCode() == 503 || response.statusCode() == 500) {
-                    logger.warn("Transient error from Gemini (Status: {}). Retrying... (Attempt {}/{})", response.statusCode(), attempt, this.maxRetries);
+                    logger.warn("Transient error from Nvidia (Status: {}). Retrying... (Attempt {}/{})", response.statusCode(), attempt, this.maxRetries);
                     Thread.sleep((long) Math.pow(2, attempt) * 1000); // Exponential backoff
+                } else if (response.statusCode() == 401) {
+                    logger.error("Nvidia request failed with 401 Unauthorized. Check your NVIDIA_API_KEY.");
+                    throw new RuntimeException("AI provider authentication failed (401).");
                 } else {
-                    logger.error("Gemini request failed. Status: {}, Body: {}", response.statusCode(), response.body());
+                    logger.error("Nvidia request failed. Status: {}, Body: {}", response.statusCode(), response.body());
                     throw new RuntimeException("AI provider failed with status " + response.statusCode());
                 }
             } catch (IOException | InterruptedException e) {
-                logger.error("Error communicating with Gemini (Attempt {}/{}): {}", attempt, this.maxRetries, e.getMessage());
+                logger.error("Error communicating with Nvidia (Attempt {}/{}): {}", attempt, this.maxRetries, e.getMessage());
                 if (attempt == this.maxRetries || e instanceof InterruptedException) {
                     if (e instanceof InterruptedException) {
                         Thread.currentThread().interrupt();
@@ -141,32 +145,39 @@ public class GeminiProvider implements AiProvider {
 
     private Map<String, Object> buildPayload(String systemPrompt, String userPrompt, boolean requireJson) {
         Map<String, Object> payload = new HashMap<>();
-        
-        // System instruction
+
+        payload.put("model", this.modelName);
+
+        List<Map<String, String>> messages = new ArrayList<>();
+
         if (systemPrompt != null && !systemPrompt.isEmpty()) {
-            Map<String, Object> sysInstruction = new HashMap<>();
-            List<Map<String, String>> sysParts = new ArrayList<>();
-            sysParts.add(Map.of("text", systemPrompt));
-            sysInstruction.put("parts", sysParts);
-            payload.put("systemInstruction", sysInstruction);
+            Map<String, String> sysMsg = new HashMap<>();
+            sysMsg.put("role", "system");
+            sysMsg.put("content", systemPrompt);
+            messages.add(sysMsg);
         }
 
-        // Contents (User prompt)
-        Map<String, Object> content = new HashMap<>();
-        content.put("role", "user");
-        List<Map<String, String>> userParts = new ArrayList<>();
-        userParts.add(Map.of("text", userPrompt));
-        content.put("parts", userParts);
-        
-        List<Map<String, Object>> contents = new ArrayList<>();
-        contents.add(content);
-        payload.put("contents", contents);
+        Map<String, String> userMsg = new HashMap<>();
+        userMsg.put("role", "user");
+        userMsg.put("content", userPrompt);
+        messages.add(userMsg);
 
-        // Config for JSON
+        payload.put("messages", messages);
+        payload.put("temperature", 1);
+        payload.put("top_p", 0.95);
+        payload.put("max_tokens", 16384);
+        payload.put("stream", false);
+
+        Map<String, Object> extraBody = new HashMap<>();
+        Map<String, Object> chatTemplateKwargs = new HashMap<>();
+        chatTemplateKwargs.put("thinking", false);
+        extraBody.put("chat_template_kwargs", chatTemplateKwargs);
+        payload.put("extra_body", extraBody);
+
         if (requireJson) {
-            Map<String, Object> config = new HashMap<>();
-            config.put("responseMimeType", "application/json");
-            payload.put("generationConfig", config);
+            Map<String, Object> responseFormat = new HashMap<>();
+            responseFormat.put("type", "json_object");
+            payload.put("response_format", responseFormat);
         }
 
         return payload;
@@ -174,24 +185,24 @@ public class GeminiProvider implements AiProvider {
 
     private String extractText(JsonNode root) {
         try {
-            JsonNode textNode = root.at("/candidates/0/content/parts/0/text");
+            JsonNode textNode = root.at("/choices/0/message/content");
             if (textNode.isMissingNode()) {
                 throw new RuntimeException("No text found in response");
             }
             return textNode.asText();
         } catch (Exception e) {
-            logger.error("Failed to extract text from Gemini response. Response body might be malformed or blocked due to safety settings.");
+            logger.error("Failed to extract text from Nvidia response.");
             throw e;
         }
     }
-    
+
     private void logUsage(JsonNode root) {
-        JsonNode usage = root.get("usageMetadata");
+        JsonNode usage = root.get("usage");
         if (usage != null) {
-            int promptTokens = usage.path("promptTokenCount").asInt(0);
-            int candidatesTokens = usage.path("candidatesTokenCount").asInt(0);
-            int totalTokens = usage.path("totalTokenCount").asInt(0);
-            logger.info("Gemini Token usage - Prompt: {}, Response: {}, Total: {}", promptTokens, candidatesTokens, totalTokens);
+            int promptTokens = usage.path("prompt_tokens").asInt(0);
+            int completionTokens = usage.path("completion_tokens").asInt(0);
+            int totalTokens = usage.path("total_tokens").asInt(0);
+            logger.info("Nvidia Token usage - Prompt: {}, Response: {}, Total: {}", promptTokens, completionTokens, totalTokens);
         }
     }
 }

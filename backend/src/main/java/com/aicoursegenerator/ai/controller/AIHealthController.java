@@ -23,7 +23,7 @@ public class AIHealthController {
         if (healthCheckService.isAiAvailable()) {
             return ResponseEntity.ok(Map.of(
                     "status", "UP",
-                    "provider", "Gemini",
+                    "provider", "NVIDIA",
                     "models", healthCheckService.getAvailableModels(),
                     "latency", healthCheckService.getLastLatency()
             ));
