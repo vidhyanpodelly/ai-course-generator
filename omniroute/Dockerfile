@@ -6,5 +6,4 @@ EXPOSE 20128
 # Set up volume for persisting OmniRoute configuration (combos, keys)
 VOLUME ["/app/data"]
 
-# Run the OmniRoute server (assuming serve command is default)
-CMD ["serve", "--host", "0.0.0.0", "--port", "20128", "--data-dir", "/app/data"]
+# The default CMD baked into diegosouzapw/omniroute will be used automatically.
