@@ -22,9 +22,9 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 @Service
-public class NvidiaProvider implements AiProvider {
+public class OpenRouterProvider implements AiProvider {
 
-    private static final Logger logger = LoggerFactory.getLogger(NvidiaProvider.class);
+    private static final Logger logger = LoggerFactory.getLogger(OpenRouterProvider.class);
     private final String apiKey;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -33,12 +33,12 @@ public class NvidiaProvider implements AiProvider {
     private final Duration timeout;
     private final int maxRetries;
 
-    public NvidiaProvider(
-            @Value("${nvidia.api-key:}") String apiKey,
-            @Value("${nvidia.model:deepseek-ai/deepseek-v4-pro}") String modelName,
-            @Value("${nvidia.base-url:https://integrate.api.nvidia.com/v1}") String baseUrl,
-            @Value("${nvidia.timeout:120s}") Duration timeout,
-            @Value("${nvidia.max-retries:3}") int maxRetries,
+    public OpenRouterProvider(
+            @Value("${openrouter.api-key:}") String apiKey,
+            @Value("${openrouter.model:google/gemma-4-31b-it:free}") String modelName,
+            @Value("${openrouter.base-url:https://openrouter.ai/api/v1}") String baseUrl,
+            @Value("${openrouter.timeout:120s}") Duration timeout,
+            @Value("${openrouter.max-retries:3}") int maxRetries,
             ObjectMapper objectMapper) {
 
         this.apiKey = apiKey;
@@ -53,9 +53,9 @@ public class NvidiaProvider implements AiProvider {
                 .build();
 
         if (this.apiKey == null || this.apiKey.trim().isEmpty()) {
-            throw new IllegalStateException("NVIDIA_API_KEY environment variable is missing.");
+            throw new IllegalStateException("OPENROUTER_API_KEY environment variable is missing.");
         }
-        logger.info("Initialized NvidiaProvider with model {}", this.modelName);
+        logger.info("Initialized OpenRouterProvider with model {}", this.modelName);
     }
 
     @Override
@@ -67,7 +67,7 @@ public class NvidiaProvider implements AiProvider {
     public <T> T generateStructuredJson(String systemPrompt, String userPrompt, Class<T> responseClass) {
         String jsonResponse = executeRequest(systemPrompt, userPrompt, true);
 
-        // Clean markdown blocks if the model happened to include them despite the mime-type
+        // Clean markdown blocks if the model happened to include them
         jsonResponse = jsonResponse.trim();
         if (jsonResponse.startsWith("```json")) {
             jsonResponse = jsonResponse.substring(7);
@@ -89,7 +89,7 @@ public class NvidiaProvider implements AiProvider {
 
     @Override
     public void streamText(String systemPrompt, String userPrompt, SseEmitter emitter, Consumer<String> onComplete) {
-        throw new UnsupportedOperationException("Streaming is not yet implemented for direct Nvidia.");
+        throw new UnsupportedOperationException("Streaming is not yet implemented for direct OpenRouter.");
     }
 
     private String executeRequest(String systemPrompt, String userPrompt, boolean requireJson) {
@@ -106,11 +106,13 @@ public class NvidiaProvider implements AiProvider {
                         .uri(URI.create(this.baseUrl + "/chat/completions"))
                         .header("Content-Type", "application/json")
                         .header("Authorization", "Bearer " + this.apiKey)
+                        .header("HTTP-Referer", "https://aicoursegenerator.com")
+                        .header("X-Title", "AI Course Generator")
                         .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                         .timeout(this.timeout)
                         .build();
 
-                logger.debug("Sending request to Nvidia (Attempt {}/{})", attempt, this.maxRetries);
+                logger.debug("Sending request to OpenRouter (Attempt {}/{})", attempt, this.maxRetries);
 
                 HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
                 long duration = System.currentTimeMillis() - startTime;
@@ -118,20 +120,20 @@ public class NvidiaProvider implements AiProvider {
                 if (response.statusCode() >= 200 && response.statusCode() < 300) {
                     JsonNode root = objectMapper.readTree(response.body());
                     logUsage(root);
-                    logger.info("Nvidia request successful. Status: {}, Duration: {}ms", response.statusCode(), duration);
+                    logger.info("OpenRouter request successful. Status: {}, Duration: {}ms", response.statusCode(), duration);
                     return extractText(root);
-                } else if (response.statusCode() == 429 || response.statusCode() == 503 || response.statusCode() == 500) {
-                    logger.warn("Transient error from Nvidia (Status: {}). Retrying... (Attempt {}/{})", response.statusCode(), attempt, this.maxRetries);
+                } else if (response.statusCode() == 429 || response.statusCode() == 503 || response.statusCode() == 500 || response.statusCode() == 502) {
+                    logger.warn("Transient error from OpenRouter (Status: {}). Retrying... (Attempt {}/{})", response.statusCode(), attempt, this.maxRetries);
                     Thread.sleep((long) Math.pow(2, attempt) * 1000); // Exponential backoff
                 } else if (response.statusCode() == 401) {
-                    logger.error("Nvidia request failed with 401 Unauthorized. Check your NVIDIA_API_KEY.");
+                    logger.error("OpenRouter request failed with 401 Unauthorized. Check your OPENROUTER_API_KEY.");
                     throw new RuntimeException("AI provider authentication failed (401).");
                 } else {
-                    logger.error("Nvidia request failed. Status: {}, Body: {}", response.statusCode(), response.body());
+                    logger.error("OpenRouter request failed. Status: {}, Body: {}", response.statusCode(), response.body());
                     throw new RuntimeException("AI provider failed with status " + response.statusCode());
                 }
             } catch (IOException | InterruptedException e) {
-                logger.error("Error communicating with Nvidia (Attempt {}/{}): {}", attempt, this.maxRetries, e.getMessage());
+                logger.error("Error communicating with OpenRouter (Attempt {}/{}): {}", attempt, this.maxRetries, e.getMessage());
                 if (attempt == this.maxRetries || e instanceof InterruptedException) {
                     if (e instanceof InterruptedException) {
                         Thread.currentThread().interrupt();
@@ -163,14 +165,14 @@ public class NvidiaProvider implements AiProvider {
         messages.add(userMsg);
 
         payload.put("messages", messages);
-        payload.put("temperature", 1);
-        payload.put("top_p", 0.95);
-        payload.put("max_tokens", 16384);
         payload.put("stream", false);
 
-        Map<String, Object> chatTemplateKwargs = new HashMap<>();
-        chatTemplateKwargs.put("thinking", false);
-        payload.put("chat_template_kwargs", chatTemplateKwargs);
+        // OpenRouter specific json mode
+        if (requireJson) {
+            Map<String, Object> responseFormat = new HashMap<>();
+            responseFormat.put("type", "json_object");
+            payload.put("response_format", responseFormat);
+        }
 
         return payload;
     }
@@ -183,7 +185,7 @@ public class NvidiaProvider implements AiProvider {
             }
             return textNode.asText();
         } catch (Exception e) {
-            logger.error("Failed to extract text from Nvidia response.");
+            logger.error("Failed to extract text from OpenRouter response.");
             throw e;
         }
     }
@@ -194,7 +196,7 @@ public class NvidiaProvider implements AiProvider {
             int promptTokens = usage.path("prompt_tokens").asInt(0);
             int completionTokens = usage.path("completion_tokens").asInt(0);
             int totalTokens = usage.path("total_tokens").asInt(0);
-            logger.info("Nvidia Token usage - Prompt: {}, Response: {}, Total: {}", promptTokens, completionTokens, totalTokens);
+            logger.info("OpenRouter Token usage - Prompt: {}, Response: {}, Total: {}", promptTokens, completionTokens, totalTokens);
         }
     }
 }

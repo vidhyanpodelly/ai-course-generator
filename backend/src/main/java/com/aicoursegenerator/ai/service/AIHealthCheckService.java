@@ -34,8 +34,8 @@ public class AIHealthCheckService {
     private volatile List<String> availableModels = new ArrayList<>();
 
     public AIHealthCheckService(
-            @Value("${nvidia.api-key:}") String apiKey,
-            @Value("${nvidia.base-url:https://integrate.api.nvidia.com/v1}") String baseUrl,
+            @Value("${openrouter.api-key:}") String apiKey,
+            @Value("${openrouter.base-url:https://openrouter.ai/api/v1}") String baseUrl,
             ObjectMapper objectMapper) {
         this.apiKey = apiKey;
         this.objectMapper = objectMapper;
@@ -51,15 +51,15 @@ public class AIHealthCheckService {
 
     @EventListener(ApplicationReadyEvent.class)
     public void onStartup() {
-        logger.info("Performing startup AI health check against NVIDIA");
+        logger.info("Performing startup AI health check against OpenRouter");
         checkAIHealth();
     }
 
     @Scheduled(fixedDelay = 300000) // Every 5 minutes
     public void checkAIHealth() {
-        if (apiKey == null || apiKey.trim().isEmpty() || apiKey.equals("${NVIDIA_API_KEY}")) {
+        if (apiKey == null || apiKey.trim().isEmpty() || apiKey.equals("${OPENROUTER_API_KEY}")) {
             isAiAvailable = false;
-            lastFailureReason = "NVIDIA_API_KEY is not configured";
+            lastFailureReason = "OPENROUTER_API_KEY is not configured";
             logger.error("Health Check Failed: {}", lastFailureReason);
             return;
         }
@@ -82,7 +82,7 @@ public class AIHealthCheckService {
                 this.isAiAvailable = true;
                 this.lastFailureReason = null;
                 parseModels(response.body());
-                logger.info("AI Health Check Passed (NVIDIA). Latency: {}ms, Available models: {}", duration, availableModels.size());
+                logger.info("AI Health Check Passed (OpenRouter). Latency: {}ms, Available models: {}", duration, availableModels.size());
             } else {
                 this.isAiAvailable = false;
                 this.lastFailureReason = "HTTP " + response.statusCode() + " - " + response.body();
