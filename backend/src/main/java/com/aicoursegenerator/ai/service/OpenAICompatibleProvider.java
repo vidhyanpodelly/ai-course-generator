@@ -33,10 +33,19 @@ public class OpenAICompatibleProvider implements AiProvider {
     public OpenAICompatibleProvider(
             @Value("${ai.api-key:}") String apiKey,
             @Value("${ai.model:course-generator}") String model,
-            @Value("${ai.base-url:http://localhost:20128/v1}") String baseUrl,
+            @Value("${ai.base-url:}") String baseUrl,
             ObjectMapper objectMapper) {
         this.apiKey = apiKey;
         this.model = model;
+        
+        if (baseUrl == null || baseUrl.trim().isEmpty() || baseUrl.equals("${AI_BASE_URL}")) {
+            throw new IllegalStateException("AI_BASE_URL environment variable is not configured. Please set it to a valid OmniRoute URL.");
+        }
+        
+        if (baseUrl.contains("localhost") || baseUrl.contains("127.0.0.1")) {
+            logger.warn("WARNING: AI_BASE_URL is pointing to localhost ({}). This will likely fail in a cloud environment.", baseUrl);
+        }
+        
         // Ensure trailing slash for consistent endpoint building
         this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
         this.objectMapper = objectMapper;

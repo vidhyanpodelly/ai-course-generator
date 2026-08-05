@@ -38,6 +38,7 @@ public class CourseGenerationService {
     private final PDFChunkRepository chunkRepository;
     private final PromptLoader promptLoader;
     private final AiProviderFactory providerFactory;
+    private final com.aicoursegenerator.ai.service.AIHealthCheckService healthCheckService;
 
     public CourseGenerationService(
             CourseRepository courseRepository,
@@ -45,13 +46,15 @@ public class CourseGenerationService {
             LessonRepository lessonRepository,
             PDFChunkRepository chunkRepository,
             PromptLoader promptLoader,
-            AiProviderFactory providerFactory) {
+            AiProviderFactory providerFactory,
+            com.aicoursegenerator.ai.service.AIHealthCheckService healthCheckService) {
         this.courseRepository = courseRepository;
         this.chapterRepository = chapterRepository;
         this.lessonRepository = lessonRepository;
         this.chunkRepository = chunkRepository;
         this.promptLoader = promptLoader;
         this.providerFactory = providerFactory;
+        this.healthCheckService = healthCheckService;
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -60,6 +63,10 @@ public class CourseGenerationService {
 
     @Transactional
     public Course initiateCourseGeneration(PDFMetadata pdfMetadata, User user) {
+        if (!healthCheckService.isAiAvailable()) {
+            throw new com.aicoursegenerator.common.exception.ServiceUnavailableException("AI service temporarily unavailable: " + healthCheckService.getLastFailureReason());
+        }
+        
         // Verify if a course is already generated for this PDF
         // Optionally allow multiple, but let's check or create a new one
         Course course = new Course();

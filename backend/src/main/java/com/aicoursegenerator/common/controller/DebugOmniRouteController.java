@@ -19,8 +19,10 @@ public class DebugOmniRouteController {
 
     private static final Logger logger = LoggerFactory.getLogger(DebugOmniRouteController.class);
     private final HttpClient httpClient;
+    private final String baseUrl;
 
-    public DebugOmniRouteController() {
+    public DebugOmniRouteController(@org.springframework.beans.factory.annotation.Value("${ai.base-url:}") String baseUrl) {
+        this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
         this.httpClient = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofSeconds(20))
@@ -44,7 +46,7 @@ public class DebugOmniRouteController {
             logger.info("Sending debug request to OmniRoute: {}", jsonBody);
 
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("http://localhost:20128/v1/chat/completions"))
+                    .uri(URI.create(this.baseUrl + "/chat/completions"))
                     .header("Content-Type", "application/json")
                     .timeout(Duration.ofSeconds(60))
                     .POST(HttpRequest.BodyPublishers.ofString(jsonBody))

@@ -66,6 +66,14 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error("You do not have permission to access this resource"));
     }
 
+    @ExceptionHandler(ServiceUnavailableException.class)
+    public ResponseEntity<ApiResponse<Object>> handleServiceUnavailable(ServiceUnavailableException ex) {
+        logger.error("Service unavailable: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Object>> handleGeneralException(Exception ex, org.springframework.web.context.request.WebRequest request) {
         // BUG 4 FIX: Always log the FULL stack trace with root cause, class, file, and line number.
