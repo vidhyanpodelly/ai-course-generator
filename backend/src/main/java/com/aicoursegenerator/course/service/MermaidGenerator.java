@@ -12,7 +12,7 @@ public class MermaidGenerator {
         if (response == null || response.rootTopic() == null) return "";
         StringBuilder sb = new StringBuilder();
         sb.append("mindmap\n");
-        sb.append("  root((").append(sanitize(response.rootTopic())).append("))\n");
+        sb.append("  root((\"").append(sanitizeLabel(response.rootTopic())).append("\"))\n");
         if (response.children() != null) {
             for (MindMapResponse.MindMapNode child : response.children()) {
                 appendNode(sb, child, 4);
@@ -24,7 +24,8 @@ public class MermaidGenerator {
     private void appendNode(StringBuilder sb, MindMapResponse.MindMapNode node, int indentLevel) {
         if (node == null || node.name() == null || node.name().isEmpty()) return;
         String indent = " ".repeat(indentLevel);
-        sb.append(indent).append(sanitize(node.name())).append("\n");
+        String safeId = "node_" + Math.abs(node.name().hashCode()) + "_" + (int)(Math.random() * 10000);
+        sb.append(indent).append(safeId).append("[\"").append(sanitizeLabel(node.name())).append("\"]\n");
         if (node.children() != null) {
             for (MindMapResponse.MindMapNode child : node.children()) {
                 appendNode(sb, child, indentLevel + 2);
@@ -72,12 +73,12 @@ public class MermaidGenerator {
 
     private String sanitize(String text) {
         if (text == null) return "";
-        return text.replace("(", "").replace(")", "").replace(":", "").replace("\"", "").replace(";", "");
+        return text.replace("(", "").replace(")", "").replace(":", "").replace("\"", "").replace(";", "").replace("\n", " ").replace("\r", "");
     }
     
     private String sanitizeLabel(String text) {
         if (text == null) return "";
-        return text.replace("\"", "'"); 
+        return text.replace("\"", "'").replace("\n", "<br/>").replace("\r", ""); 
     }
 
     private String sanitizeId(String id) {
