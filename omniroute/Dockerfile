@@ -1,4 +1,4 @@
-FROM omniroute/omniroute:latest
+FROM diegosouzapw/omniroute:latest
 
 # Expose the OmniRoute API port
 EXPOSE 20128
