@@ -168,17 +168,9 @@ public class NvidiaProvider implements AiProvider {
         payload.put("max_tokens", 16384);
         payload.put("stream", false);
 
-        Map<String, Object> extraBody = new HashMap<>();
         Map<String, Object> chatTemplateKwargs = new HashMap<>();
         chatTemplateKwargs.put("thinking", false);
-        extraBody.put("chat_template_kwargs", chatTemplateKwargs);
-        payload.put("extra_body", extraBody);
-
-        if (requireJson) {
-            Map<String, Object> responseFormat = new HashMap<>();
-            responseFormat.put("type", "json_object");
-            payload.put("response_format", responseFormat);
-        }
+        payload.put("chat_template_kwargs", chatTemplateKwargs);
 
         return payload;
     }
