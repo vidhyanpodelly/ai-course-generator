@@ -123,8 +123,8 @@ public class OpenRouterProvider implements AiProvider {
                     logger.info("OpenRouter request successful. Status: {}, Duration: {}ms", response.statusCode(), duration);
                     return extractText(root);
                 } else if (response.statusCode() == 429 || response.statusCode() == 503 || response.statusCode() == 500 || response.statusCode() == 502) {
-                    logger.warn("Transient error from OpenRouter (Status: {}). Retrying... (Attempt {}/{})", response.statusCode(), attempt, this.maxRetries);
-                    Thread.sleep((long) Math.pow(2, attempt) * 1000); // Exponential backoff
+                    logger.warn("Transient error from OpenRouter (Status: {}). Body: {}. Retrying... (Attempt {}/{})", response.statusCode(), response.body(), attempt, this.maxRetries);
+                    Thread.sleep((long) Math.pow(2, attempt + 1) * 1000); // Exponential backoff (4s, 8s, 16s, 32s, etc)
                 } else if (response.statusCode() == 401) {
                     logger.error("OpenRouter request failed with 401 Unauthorized. Check your OPENROUTER_API_KEY.");
                     throw new RuntimeException("AI provider authentication failed (401).");
