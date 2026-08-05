@@ -5,13 +5,13 @@ import org.springframework.stereotype.Component;
 @Component
 public class AiProviderFactory {
 
-    private final AiProvider openAICompatibleProvider;
+    private final AiProvider geminiProvider;
 
-    public AiProviderFactory(AiProvider openAICompatibleProvider) {
-        this.openAICompatibleProvider = openAICompatibleProvider;
+    public AiProviderFactory(AiProvider geminiProvider) {
+        this.geminiProvider = geminiProvider;
     }
 
     public AiProvider getProvider() {
-        return openAICompatibleProvider;
+        return geminiProvider;
     }
 }

@@ -23,10 +23,10 @@ public class AIHealthCheckService {
 
     private static final Logger logger = LoggerFactory.getLogger(AIHealthCheckService.class);
 
-    private final String baseUrl;
     private final String apiKey;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
+    private static final String MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models?key=";
 
     private volatile boolean isAiAvailable = false;
     private volatile String lastFailureReason = "Not checked yet";
@@ -34,10 +34,8 @@ public class AIHealthCheckService {
     private volatile List<String> availableModels = new ArrayList<>();
 
     public AIHealthCheckService(
-            @Value("${ai.base-url:}") String baseUrl,
-            @Value("${ai.api-key:}") String apiKey,
+            @Value("${gemini.api-key:}") String apiKey,
             ObjectMapper objectMapper) {
-        this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
         this.apiKey = apiKey;
         this.objectMapper = objectMapper;
         this.httpClient = HttpClient.newBuilder()
@@ -48,40 +46,37 @@ public class AIHealthCheckService {
 
     @EventListener(ApplicationReadyEvent.class)
     public void onStartup() {
-        logger.info("Performing startup AI health check against OmniRoute at {}", baseUrl);
+        logger.info("Performing startup AI health check against Google Gemini");
         checkAIHealth();
     }
 
     @Scheduled(fixedDelay = 300000) // Every 5 minutes
     public void checkAIHealth() {
-        if (baseUrl == null || baseUrl.isEmpty() || baseUrl.equals("${AI_BASE_URL}")) {
+        if (apiKey == null || apiKey.trim().isEmpty() || apiKey.equals("${GEMINI_API_KEY}")) {
             isAiAvailable = false;
-            lastFailureReason = "AI_BASE_URL is not configured";
+            lastFailureReason = "GEMINI_API_KEY is not configured";
             logger.error("Health Check Failed: {}", lastFailureReason);
             return;
         }
 
         try {
-            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + "/models"))
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(MODELS_URL + apiKey))
                     .timeout(Duration.ofSeconds(15))
-                    .GET();
-
-            if (apiKey != null && !apiKey.trim().isEmpty()) {
-                requestBuilder.header("Authorization", "Bearer " + apiKey);
-            }
+                    .GET()
+                    .build();
 
             long startTime = System.currentTimeMillis();
-            HttpResponse<String> response = httpClient.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             long duration = System.currentTimeMillis() - startTime;
 
             this.lastLatency = duration;
 
-            if (response.statusCode() == 200) {
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
                 this.isAiAvailable = true;
                 this.lastFailureReason = null;
                 parseModels(response.body());
-                logger.info("AI Health Check Passed. Latency: {}ms, Available models: {}", duration, availableModels.size());
+                logger.info("AI Health Check Passed (Gemini). Latency: {}ms, Available models: {}", duration, availableModels.size());
             } else {
                 this.isAiAvailable = false;
                 this.lastFailureReason = "HTTP " + response.statusCode() + " - " + response.body();
@@ -98,11 +93,11 @@ public class AIHealthCheckService {
     private void parseModels(String jsonBody) {
         try {
             JsonNode root = objectMapper.readTree(jsonBody);
-            JsonNode data = root.path("data");
+            JsonNode modelsNode = root.path("models");
             List<String> models = new ArrayList<>();
-            if (data.isArray()) {
-                for (JsonNode modelNode : data) {
-                    models.add(modelNode.path("id").asText());
+            if (modelsNode.isArray()) {
+                for (JsonNode modelNode : modelsNode) {
+                    models.add(modelNode.path("name").asText());
                 }
             }
             this.availableModels = models;
